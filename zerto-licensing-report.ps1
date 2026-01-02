@@ -130,14 +130,6 @@ foreach ($module in $modules) {
     }
 }
 
-# Import enterprise ZertoAuth module (replaces local Zerto.Auth.psm1)
-$zertoAuthPath = "C:\Users\Administrator\Documents\Scripts\Helpful Mods\File that connects to ZVM REST APIs\ZertoAuth.psm1"
-if (-not (Test-Path $zertoAuthPath)) {
-    Write-Host "[ERROR] Enterprise ZertoAuth module not found at: $zertoAuthPath" -ForegroundColor Red
-    exit 3
-}
-Import-Module $zertoAuthPath -Force -WarningAction SilentlyContinue
-
 try {
     # Initialize logging
     $logPath = Join-Path $ScriptRoot "logs\report.log"
@@ -146,9 +138,34 @@ try {
         New-Item -ItemType Directory -Path $logDir -Force | Out-Null
     }
 
-    # Load configuration
+    # Load configuration FIRST (before choosing auth module)
     Write-Host "Loading configuration from: $Config" -ForegroundColor Green
     $configData = Get-ZertoConfig -ConfigPath $Config
+
+    # Import ZertoAuth module
+    # Priority: 1) config.yaml auth_module_path, 2) built-in src/ps/Zerto.Auth.psm1
+    $zertoAuthPath = $null
+
+    if ($configData.auth_module_path) {
+        $zertoAuthPath = $configData.auth_module_path
+        if (-not (Test-Path $zertoAuthPath)) {
+            Write-Host "[ERROR] Custom auth module not found at configured path: $zertoAuthPath" -ForegroundColor Red
+            Write-Host "[INFO] Check 'auth_module_path' in config.yaml" -ForegroundColor Yellow
+            exit 3
+        }
+        Write-Host "[INFO] Using custom auth module from config: $zertoAuthPath" -ForegroundColor Cyan
+    } else {
+        # Fallback to built-in module
+        $zertoAuthPath = Join-Path $ScriptRoot "src\ps\Zerto.Auth.psm1"
+        if (-not (Test-Path $zertoAuthPath)) {
+            Write-Host "[ERROR] Built-in auth module not found at: $zertoAuthPath" -ForegroundColor Red
+            Write-Host "[INFO] To use a custom auth module, add 'auth_module_path' to config.yaml" -ForegroundColor Yellow
+            exit 3
+        }
+        Write-Host "[INFO] Using built-in auth module" -ForegroundColor Cyan
+    }
+
+    Import-Module $zertoAuthPath -Force -WarningAction SilentlyContinue
 
     # Authenticate with ZVM using enterprise module
     Write-Host "Authenticating with Zerto Virtual Manager..." -ForegroundColor Green

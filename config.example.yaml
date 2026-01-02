@@ -21,6 +21,15 @@
 zvm_url: "https://zvm.example.com"
 
 # ─────────────────────────────────────────────────────────────────────
+# OPTIONAL: Custom Authentication Module Path
+# ─────────────────────────────────────────────────────────────────────
+# For enterprise/lab environments with custom ZertoAuth implementations
+# If not specified, uses built-in module (src/ps/Zerto.Auth.psm1)
+# Example for Windows: C:\path\to\custom\ZertoAuth.psm1
+# Example for Linux: /path/to/custom/zerto_auth.py
+auth_module_path: null
+
+# ─────────────────────────────────────────────────────────────────────
 # REQUIRED: AUTHENTICATION CREDENTIALS
 # ─────────────────────────────────────────────────────────────────────
 auth:
