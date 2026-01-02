@@ -517,8 +517,8 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 ### Direct Support
 **For complex issues or collaboration:**
 - 📧 **Email**: aaron.lastoff@gmail.com
-- 🐙 **GitHub**: [@AaronLastoff](https://github.com/AaronLastoff)
-- 💼 **LinkedIn**: Connect for professional collaboration
+- 🐙 **GitHub**: [@AaronLastoff](https://github.com/ALastoff)
+- 💼 **LinkedIn**: [@AaronLastoff](https://www.linkedin.com/in/aaron-lastoff/)
 
 **Want to enhance LicenseView?** See [TROUBLESHOOTING.md](TROUBLESHOOTING.md#-want-to-enhance-licenseview) for collaboration opportunities!
 
