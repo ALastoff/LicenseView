@@ -1,0 +1,37 @@
+{
+  "license": {
+    "key": "ZERTO-TEST-KEY-12345",
+    "entitled_vms": 500,
+    "expiration_date": "2026-06-30",
+    "days_to_expiry": 180
+  },
+  "consumption": {
+    "protected_vms": 412,
+    "vpgs": 97,
+    "vpg_status": {
+      "healthy": 92,
+      "warning": 4,
+      "critical": 1
+    },
+    "journal_storage_gb": 12345.6,
+    "sites": [
+      {
+        "name": "Primary-DC",
+        "protected_vms": 210,
+        "vpgs": 48
+      },
+      {
+        "name": "Secondary-DC",
+        "protected_vms": 202,
+        "vpgs": 49
+      }
+    ]
+  },
+  "history": {
+    "days_7": [390, 392, 396, 401, 406, 410, 412],
+    "days_30": [350, 360, 370, 380, 390, 400, 410, 412],
+    "days_90": []
+  },
+  "zerto_version": "10.2",
+  "timestamp": "2025-12-31T12:00:00Z"
+}

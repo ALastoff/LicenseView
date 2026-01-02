@@ -1,0 +1,107 @@
+# ╔═══════════════════════════════════════════════════════════════════╗
+# ║                  LicenseView - Configuration Template                  ║
+# ╚═══════════════════════════════════════════════════════════════════╝
+#
+# 📋 SETUP INSTRUCTIONS:
+#   1. Copy this file: cp config.example.yaml config.yaml
+#   2. Edit config.yaml with your Zerto environment details
+#   3. NEVER commit config.yaml to version control (it's in .gitignore)
+#
+# 🔒 SECURITY:
+#   - Use environment variables for credentials (recommended)
+#   - See SECURITY.md for best practices
+#
+# ═══════════════════════════════════════════════════════════════════════
+
+# ─────────────────────────────────────────────────────────────────────
+# REQUIRED: Zerto Virtual Manager URL
+# ─────────────────────────────────────────────────────────────────────
+# Example production: https://zvm.company.com
+# Example lab: https://192.168.1.100
+zvm_url: "https://zvm.example.com"
+
+# ─────────────────────────────────────────────────────────────────────
+# REQUIRED: AUTHENTICATION CREDENTIALS
+# ─────────────────────────────────────────────────────────────────────
+auth:
+  # Zerto version (determines authentication method)
+  version: "10.x"  # Options: "10.x" (Keycloak) or "pre-10" (legacy)
+  
+  # Credentials (use environment variables for security)
+  username: "${ZVM_USERNAME}"  # Your Zerto administrator username
+  password: "${ZVM_PASSWORD}"  # Your Zerto administrator password
+  
+  # Note: For Zerto 10.x, these credentials are used for Keycloak authentication
+  # For pre-10.x, these are direct ZVM credentials
+
+# ─────────────────────────────────────────────────────────────────────
+# SSL/TLS CERTIFICATE VALIDATION
+# ─────────────────────────────────────────────────────────────────────
+# Production: Set to 'true' (validates ZVM certificate against trusted CAs)
+# Lab: Set to 'false' if using self-signed certificates
+#      (You'll see a warning - this is expected for lab environments)
+#
+# For proper certificate setup, see TLS_SETUP_GUIDE.md
+verify_tls: true
+
+# Optional: Enterprise certificate handling (advanced users)
+certificate_thumbprint: null  # Windows only - certificate pinning
+trusted_ca_path: null         # Path to custom CA bundle (e.g., /etc/ssl/certs/ca-bundle.pem)
+
+# ─────────────────────────────────────────────────────────────────────
+# OUTPUT CONFIGURATION
+# ─────────────────────────────────────────────────────────────────────
+# API timeout for slow networks
+timeout_seconds: 60
+
+# Report output directory (created automatically if missing)
+output_dir: "./reports"
+
+# ─────────────────────────────────────────────────────────────────────
+# OPTIONAL: CUSTOMIZATION
+# ─────────────────────────────────────────────────────────────────────
+# Friendly display names for sites in reports
+site_name_overrides:
+  # "internal-site-id": "Friendly Display Name"
+  # Example:
+  # "site-abc123": "New York Datacenter"
+  # "site-def456": "London DR Site"
+
+# Alert thresholds for utilization warnings
+alert_thresholds:
+  utilization_warn: 0.80  # 80% = yellow warning
+  utilization_crit: 0.95  # 95% = red critical
+
+# Historical trend analysis periods (days)
+history_days: [7, 30, 90]
+
+# ═══════════════════════════════════════════════════════════════════════
+# 🔒 SECURITY REMINDERS:
+# ═══════════════════════════════════════════════════════════════════════
+# 1. NEVER commit config.yaml with real credentials to Git
+# 2. Use environment variables for username/password:
+#    
+#    PowerShell:
+#      $env:ZVM_USERNAME = "your-username"
+#      $env:ZVM_PASSWORD = "your-password"
+#    
+#    Linux/macOS:
+#      export ZVM_USERNAME="your-username"
+#      export ZVM_PASSWORD="your-password"
+#
+# 3. For production: verify_tls = true (validate certificates)
+# 4. For labs: verify_tls = false (allow self-signed certs with warning)
+# 5. See SECURITY.md for enterprise secret management integration
+# ═══════════════════════════════════════════════════════════════════════
+
+#    export ZVM_CLIENT_ID="..."
+#    export ZVM_CLIENT_SECRET="..."
+#    export ZVM_USERNAME="..."
+#    export ZVM_PASSWORD="..."
+# 3. For CI/CD, use:
+#    - GitHub Secrets (GitHub Actions)
+#    - Azure Key Vault
+#    - HashiCorp Vault
+#    - AWS Secrets Manager
+# 4. If verify_tls=false, the tool will emit a warning banner
+# 5. Use --insecure flag explicitly when disabling TLS validation

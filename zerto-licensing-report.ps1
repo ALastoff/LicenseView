@@ -1,0 +1,361 @@
+<#
+.SYNOPSIS
+    LicenseView - PowerShell Edition
+
+.DESCRIPTION
+    Generate comprehensive licensing utilization reports for Zerto Virtual Manager
+    Supports both Zerto 10.x (Keycloak) and pre-10.x (legacy auth)
+
+.PARAMETER Config
+    Path to config.yaml file (required)
+
+.PARAMETER OutputDir
+    Output directory for reports (default: ./reports)
+
+.PARAMETER Format
+    Report formats: html, csv, json (default: all)
+
+.PARAMETER DebugMode
+    Enable debug logging
+
+.PARAMETER Help
+    Display help message
+
+.PARAMETER VersionInfo
+    Display version information
+
+.EXAMPLE
+    .\zerto-licensing-report.ps1 -Config config.yaml
+
+.NOTES
+    Author: ALastoff Production
+    Version: 1.0.0
+    Project: LicenseView
+    GitHub: https://github.com/alastoff-production/licenseview
+    Built: January 2026
+    License: MIT
+    
+    DISCLAIMER:
+    This script is provided as an example only and is not supported under any Zerto support program or service.
+    The author and Zerto disclaim all implied warranties, including merchantability and fitness for a particular purpose.
+    In no event shall Zerto or the author be liable for damages arising from the use or inability to use this script.
+    Use at your own risk.
+#>
+
+param(
+    [string]$Config,
+    [string]$OutputDir = "./reports",
+    [string]$Format = "html,csv,json",
+    [switch]$DebugMode,
+    [switch]$Help,
+    [switch]$VersionInfo
+)
+
+$ErrorActionPreference = "Stop"
+$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$VER = "1.0.0"
+
+# Display help
+if ($Help) {
+    Write-Host "`nLicenseView - PowerShell Edition" -ForegroundColor Green
+    Write-Host "Built by ALastoff Production`n" -ForegroundColor Cyan
+    Write-Host "USAGE:" -ForegroundColor Yellow
+    Write-Host "  .\zerto-licensing-report.ps1 -Config config.yaml [OPTIONS]`n"
+    Write-Host "REQUIRED:" -ForegroundColor Yellow
+    Write-Host "  -Config               Path to config.yaml (required)`n"
+    Write-Host "OPTIONS:" -ForegroundColor Yellow
+    Write-Host "  -OutputDir DIR        Output directory (default: ./reports)"
+    Write-Host "  -Format FORMAT        Formats: html, csv, json (default: all)"
+    Write-Host "  -DebugMode            Enable debug logging"
+    Write-Host "  -VersionInfo          Print version information"
+    Write-Host "  -Help                 Display this help`n"
+    Write-Host "EXAMPLES:" -ForegroundColor Yellow
+    Write-Host "  # Generate all report formats"
+    Write-Host "  .\zerto-licensing-report.ps1 -Config config.yaml`n"
+    Write-Host "  # HTML only with verbose logging"
+    Write-Host "  .\zerto-licensing-report.ps1 -Config config.yaml -Format html -DebugMode`n"
+    exit 0
+}
+
+# Display version information
+if ($VersionInfo) {
+    Write-Host ""
+    Write-Host "LicenseView - Version Information" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Tool Version:       $VER" -ForegroundColor Cyan
+    Write-Host "Built by:           ALastoff Production" -ForegroundColor Cyan
+    Write-Host "Build Date:         January 2026" -ForegroundColor Cyan
+    Write-Host "License:            MIT" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Runtime Information:" -ForegroundColor Yellow
+    Write-Host "  PowerShell:         $($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor)" -ForegroundColor Green
+    Write-Host "  Script Location:    $ScriptRoot" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "GitHub: https://github.com/alastoff-production/zerto-licensing-report" -ForegroundColor Yellow
+    Write-Host ""
+    exit 0
+}
+
+# Validate Config parameter
+if (-not $Config -or -not (Test-Path $Config)) {
+    Write-Host "[ERROR] Config file required or not found: $Config" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Usage: .\zerto-licensing-report.ps1 -Config ./config.yaml" -ForegroundColor Yellow
+    Write-Host "Tip:   Copy config.example.yaml to config.yaml and edit with your details" -ForegroundColor Yellow
+    Write-Host ""
+    exit 3
+}
+
+# Create output directory if needed
+if (-not (Test-Path $OutputDir)) {
+    New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+}
+
+# Import required modules
+$modules = @(
+    "Zerto.Logging.psm1"
+    "Zerto.Config.psm1"
+    "Zerto.Data.psm1"
+    "Zerto.History.psm1"
+    "Zerto.Output.psm1"
+)
+
+foreach ($module in $modules) {
+    $modulePath = Join-Path $ScriptRoot "src\ps\$module"
+    if (Test-Path $modulePath) {
+        Import-Module $modulePath -Force -WarningAction SilentlyContinue
+    } else {
+        Write-Host "[ERROR] Module not found: $modulePath" -ForegroundColor Red
+        exit 3
+    }
+}
+
+# Import enterprise ZertoAuth module (replaces local Zerto.Auth.psm1)
+$zertoAuthPath = "C:\Users\Administrator\Documents\Scripts\Helpful Mods\File that connects to ZVM REST APIs\ZertoAuth.psm1"
+if (-not (Test-Path $zertoAuthPath)) {
+    Write-Host "[ERROR] Enterprise ZertoAuth module not found at: $zertoAuthPath" -ForegroundColor Red
+    exit 3
+}
+Import-Module $zertoAuthPath -Force -WarningAction SilentlyContinue
+
+try {
+    # Initialize logging
+    $logPath = Join-Path $ScriptRoot "logs\report.log"
+    $logDir = Split-Path -Parent $logPath
+    if (-not (Test-Path $logDir)) {
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+    }
+
+    # Load configuration
+    Write-Host "Loading configuration from: $Config" -ForegroundColor Green
+    $configData = Get-ZertoConfig -ConfigPath $Config
+
+    # Authenticate with ZVM using enterprise module
+    Write-Host "Authenticating with Zerto Virtual Manager..." -ForegroundColor Green
+    
+    # Extract values explicitly
+    $zvmUrl = $configData.zvm_url
+    $username = $configData.auth.username
+    $password = $configData.auth.password
+    $verifyTls = $configData.verify_tls
+    
+    $auth = Connect-ZertoApi -ZvmUrl $zvmUrl -Username $username -Password $password -VerifyTls $verifyTls
+
+    # Get license information
+    Write-Host "Retrieving license information..." -ForegroundColor Green
+    $licenseData = Invoke-ZertoApi -AuthContext $auth -Endpoint "/v1/license"
+    
+    # Calculate days to expiry
+    $daysToExpiry = if ($licenseData.Details.ExpiryTime) {
+        $expiryDate = [datetime]$licenseData.Details.ExpiryTime
+        ($expiryDate - (Get-Date)).Days
+    } else {
+        999999  # Perpetual license
+    }
+    
+    # Transform license data to match expected structure
+    $license = @{
+        key = $licenseData.Details.LicenseKey
+        entitled_vms = $licenseData.Details.MaxVms
+        expiration_date = if ($licenseData.Details.ExpiryTime) { $licenseData.Details.ExpiryTime } else { "No Expiration (Perpetual/Evaluation)" }
+        days_to_expiry = $daysToExpiry
+        license_type = $licenseData.Details.LicenseType
+    }
+
+    # Get current consumption
+    Write-Host "Collecting current consumption data..." -ForegroundColor Green
+    $vpgData = Invoke-ZertoApi -AuthContext $auth -Endpoint "/v1/vpgs"
+    
+    # Try to get site data (might not be available in all Zerto versions)
+    try {
+        $siteData = Invoke-ZertoApi -AuthContext $auth -Endpoint "/v1/peersites"
+    }
+    catch {
+        Write-Host "  Note: Site data endpoint not available, using license site data instead" -ForegroundColor Yellow
+        $siteData = @()
+    }
+    
+    # Get local site info
+    try {
+        $localSiteData = Invoke-ZertoApi -AuthContext $auth -Endpoint "/v1/localsite"
+    }
+    catch {
+        $localSiteData = $null
+    }
+    
+    # Build sites array from license usage data with detailed site info
+    $sitesArray = @()
+    foreach ($siteUsage in $licenseData.Usage.SitesUsage) {
+        # Check if this is the local site
+        $isLocalSite = $localSiteData -and ($siteUsage.SiteIdentifier -eq $localSiteData.SiteIdentifier)
+        
+        if ($isLocalSite) {
+            # Local site - use localsite data
+            $sitesArray += @{
+                name = $localSiteData.SiteName
+                protected_vms = $siteUsage.ProtectedVmsCount
+                site_identifier = $siteUsage.SiteIdentifier
+                location = $localSiteData.Location
+                hostname = $localSiteData.IpAddress
+                version = $localSiteData.DisplayVersion
+                siteRole = if ($siteUsage.ProtectedVmsCount -gt 0) { "Source" } else { "Target" }
+                storage_used_gb = 0
+                storage_total_gb = 0
+            }
+        }
+        else {
+            # Peer site - find matching peer site data
+            $peerSite = $siteData | Where-Object { $_.SiteIdentifier -eq $siteUsage.SiteIdentifier } | Select-Object -First 1
+            
+            if ($peerSite) {
+                $sitesArray += @{
+                    name = $peerSite.PeerSiteName
+                    protected_vms = $siteUsage.ProtectedVmsCount
+                    site_identifier = $siteUsage.SiteIdentifier
+                    location = $peerSite.Location
+                    hostname = $peerSite.HostName
+                    version = $peerSite.Version
+                    siteRole = if ($siteUsage.ProtectedVmsCount -gt 0) { "Source" } else { "Target" }
+                    storage_used_gb = [Math]::Round($peerSite.UsedStorage / 1024, 2)
+                    storage_total_gb = [Math]::Round($peerSite.ProvisionedStorage / 1024, 2)
+                }
+            }
+            else {
+                # Fallback if peer site not found
+                $sitesArray += @{
+                    name = $siteUsage.SiteName
+                    protected_vms = $siteUsage.ProtectedVmsCount
+                    site_identifier = $siteUsage.SiteIdentifier
+                    location = "Unknown"
+                    hostname = "Unknown"
+                    version = $auth.ZertoVersion
+                    siteRole = if ($siteUsage.ProtectedVmsCount -gt 0) { "Source" } else { "Target" }
+                    storage_used_gb = 0
+                    storage_total_gb = 0
+                }
+            }
+        }
+    }
+    
+    Write-Verbose "Sites array count: $($sitesArray.Count)"
+    Write-Verbose "First site name: $($sitesArray[0].name)"
+    
+    # Transform consumption data
+    $consumption = @{
+        protected_vms = $licenseData.Usage.TotalVmsCount
+        vpgs = $vpgData.Count
+        vpg_status = @{
+            healthy = ($vpgData | Where-Object { $_.Status -in @(0, 1, 2) }).Count
+            warning = ($vpgData | Where-Object { $_.Status -in @(3, 4, 5) }).Count
+            critical = ($vpgData | Where-Object { $_.Status -notin @(0, 1, 2, 3, 4, 5) }).Count
+        }
+        sites = $sitesArray
+        journal_storage_gb = 0  # To be populated from API if available
+    }
+
+    # Get historical data
+    Write-Host "Loading historical trend data..." -ForegroundColor Green
+    $history = Get-HistoryData -HistoryFile (Join-Path $ScriptRoot "data\history.json")
+    
+    # If no history exists, generate synthetic demo data
+    if (-not $history -or $history.days_7.Count -eq 0) {
+        Write-Host "  No historical data found. Generating synthetic 90-day demo..." -ForegroundColor Yellow
+        $history = Get-SyntheticHistory -CurrentProtectedVMs $consumption.protected_vms
+    }
+
+    # Save current snapshot for future trend building
+    Write-Host "Saving current snapshot to history..." -ForegroundColor Green
+    Save-HistorySnapshot -HistoryFile (Join-Path $ScriptRoot "data\history.json") `
+        -ProtectedVMs $consumption.protected_vms `
+        -VPGs $consumption.vpgs `
+        -JournalStorageGB $consumption.journal_storage_gb
+
+    # Extract trend data with labels
+    $trendData = Get-TrendData -Snapshots $history
+
+    # Calculate metrics
+    Write-Host "Calculating metrics and alerts..." -ForegroundColor Green
+    $metrics = New-ZertoMetrics -License $license -Consumption $consumption -History $trendData -AlertThresholds $configData.alert_thresholds
+
+    # Determine Zerto version for reporting
+    $zertoVersion = $auth.ZertoVersion
+
+    # Generate reports
+    $formats = $Format.Split(',') | ForEach-Object { $_.Trim().ToLower() }
+    
+    Write-Host "Generating reports..." -ForegroundColor Green
+    if ($formats -contains "html") {
+        Write-Host "  Generating HTML report..." -ForegroundColor Cyan
+        New-HtmlReport -License $license -Consumption $consumption -Metrics $metrics `
+            -History $trendData -OutputDir $OutputDir -TlsVerified $configData.verify_tls `
+            -ZertoVersion $zertoVersion -ToolVersion $VER -AlertThresholds $configData.alert_thresholds
+    }
+    
+    if ($formats -contains "csv") {
+        Write-Host "  Generating CSV report..." -ForegroundColor Cyan
+        New-CsvReport -License $license -Consumption $consumption -Metrics $metrics -OutputDir $OutputDir
+    }
+    
+    if ($formats -contains "json") {
+        Write-Host "  Generating JSON report..." -ForegroundColor Cyan
+        New-JsonReport -License $license -Consumption $consumption -Metrics $metrics `
+            -History $trendData -OutputDir $OutputDir -TlsVerified $configData.verify_tls `
+            -ZertoVersion $zertoVersion -ToolVersion $VER
+    }
+
+    # Display success message
+    Write-Host ""
+    Write-Host "[SUCCESS] Reports generated successfully!" -ForegroundColor Green
+    Write-Host "Location: $(Resolve-Path $OutputDir)" -ForegroundColor Green
+    
+    if ($formats -contains "html") {
+        Write-Host "  - HTML Dashboard: $(Join-Path $OutputDir 'report.html')" -ForegroundColor Green
+    }
+    if ($formats -contains "csv") {
+        Write-Host "  - CSV Export: $(Join-Path $OutputDir 'licensing_utilization.csv')" -ForegroundColor Green
+    }
+    if ($formats -contains "json") {
+        Write-Host "  - JSON Export: $(Join-Path $OutputDir 'licensing_utilization.json')" -ForegroundColor Green
+    }
+    
+    # Built by ALastoff Production
+    
+    exit 0
+
+} catch {
+    Write-Host ""
+    Write-Host "[ERROR] An error occurred:" -ForegroundColor Red
+    Write-Host "        $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host ""
+
+    if ($DebugMode) {
+        Write-Host "Stack Trace:" -ForegroundColor Yellow
+        Write-Host $_.Exception.StackTrace -ForegroundColor Gray
+        Write-Host ""
+    }
+
+    Write-Host "Tip: Run with -DebugMode for detailed logging" -ForegroundColor Yellow
+    Write-Host ""
+    
+    exit 2
+}
