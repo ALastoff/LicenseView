@@ -85,20 +85,6 @@ alert_thresholds:
 history_days: [7, 30, 90]
 
 # ═══════════════════════════════════════════════════════════════════════
-# 📊 OPTIONAL: Anonymous Usage Reporting
-# ═══════════════════════════════════════════════════════════════════════
-# Help improve LicenseView by sending anonymous usage analytics
-# Sent data: timestamp, script version, success/failure, runtime (NO credentials/secrets)
-# Reporting is completely optional and can be disabled at any time
-reporting:
-  enabled: false  # Set to true to help us improve the tool
-  # Note: Even if enabled, NO sensitive data is collected:
-  #   - NO ZVM credentials or URLs
-  #   - NO ZVM version or environment details
-  #   - NO user identification
-  #   Only: timestamp, tool version, execution result, total runtime
-
-# ═══════════════════════════════════════════════════════════════════════
 # 🔒 SECURITY REMINDERS:
 # ═══════════════════════════════════════════════════════════════════════
 # 1. NEVER commit config.yaml with real credentials to Git
