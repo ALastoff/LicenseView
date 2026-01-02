@@ -64,11 +64,11 @@ Query **Zerto REST APIs** to generate beautiful HTML dashboards showing license 
 
 ```bash
 # Option A: Clone with Git (if you have Git installed)
-git clone https://github.com/ALastoff/LicenseView.git
-cd LicenseView
+git clone https://github.com/your-org/licenseview.git
+cd licenseview
 
 # Option B: Download ZIP (no Git required)
-# Go to: https://github.com/ALastoff/LicenseView
+# Go to: https://github.com/your-org/licenseview
 # Click "Code" → "Download ZIP"
 # Extract and navigate to folder
 ```
@@ -90,7 +90,7 @@ cp config.example.yaml config.yaml
    Example: Your secure password (use environment variables in production!)
 
 4. **`verify_tls`** → `true` for production, `false` for lab environments  
-   See [docs/TLS_SETUP_GUIDE.md](docs/TLS_SETUP_GUIDE.md) for certificate configuration
+   See [TLS_SETUP_GUIDE.md](TLS_SETUP_GUIDE.md) for certificate configuration
 
 ---
 
@@ -488,11 +488,12 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 ## Documentation
 
-- **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - 🔧 Complete diagnostic and support guide
-- **[docs/QUICKSTART.md](docs/QUICKSTART.md)** - ⚡ 5-minute setup checklist
-- **[docs/TLS_SETUP_GUIDE.md](docs/TLS_SETUP_GUIDE.md)** - Certificate configuration for production & labs
-- **[docs/SECURITY.md](docs/SECURITY.md)** - Credential management, API permissions, compliance
-- **[docs/CHANGELOG.md](docs/CHANGELOG.md)** - Version history and release notes
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - 🔧 Complete diagnostic and support guide
+- **[QUICKSTART.md](QUICKSTART.md)** - ⚡ 5-minute setup checklist
+- **[TLS_SETUP_GUIDE.md](TLS_SETUP_GUIDE.md)** - Certificate configuration for production & labs
+- **[SECURITY.md](SECURITY.md)** - Credential management, API permissions, compliance
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development guidelines and workflow
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
 
 ## Roadmap
 
@@ -507,18 +508,19 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 ## Support & Community
 
 ### Get Help
-- **🔧 Troubleshooting**: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Complete diagnostic guide
-- **🐛 Bug Reports**: [GitHub Issues](https://github.com/ALastoff/LicenseView/issues)
-- **💡 Feature Requests**: [GitHub Discussions](https://github.com/ALastoff/LicenseView/discussions)
-- **🔒 Security Issues**: See [docs/SECURITY.md](docs/SECURITY.md) for responsible disclosure
+- **🔧 Troubleshooting**: [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Complete diagnostic guide
+- **🐛 Bug Reports**: [GitHub Issues](https://github.com/your-org/licenseview/issues)
+- **💡 Feature Requests**: [GitHub Discussions](https://github.com/your-org/licenseview/discussions)
+- **📖 Documentation**: [Project Wiki](https://github.com/your-org/licenseview/wiki)
+- **🔒 Security Issues**: See [SECURITY.md](SECURITY.md) for responsible disclosure
 
 ### Direct Support
 **For complex issues or collaboration:**
 - 📧 **Email**: aaron.lastoff@gmail.com
-- 🐙 **GitHub**: [@ALastoff](https://github.com/ALastoff)
-- 💼 **LinkedIn**: [Aaron Lastoff](https://www.linkedin.com/in/aaron-lastoff/)
+- 🐙 **GitHub**: [@AaronLastoff](https://github.com/ALastoff)
+- 💼 **LinkedIn**: [@AaronLastoff](https://www.linkedin.com/in/aaron-lastoff/)
 
-**Want to enhance LicenseView?** Open an issue or reach out via email for collaboration opportunities!
+**Want to enhance LicenseView?** See [TROUBLESHOOTING.md](TROUBLESHOOTING.md#-want-to-enhance-licenseview) for collaboration opportunities!
 
 ## License
 
@@ -548,6 +550,8 @@ Special thanks to:
 
 ---
 
-**Version**: 1.0.0  
-**Last Updated**: January 2026  
-**Maintainers**: [GitHub Contributors](https://github.com/ALastoff/LicenseView/graphs/contributors) 
+**Author:** AJ Lastoff                  
+**Company:** Zerto (HPE)  
+**Version:** 1.0  
+**Date:** December 2025   
+"# LicenseView" 
