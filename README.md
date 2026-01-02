@@ -550,7 +550,8 @@ Special thanks to:
 
 ---
 
-**Version**: 1.0.0  
-**Last Updated**: 2025  
-**Maintainers**: [GitHub Contributors](https://github.com/your-org/licenseview/graphs/contributors)
+**Author:** AJ Lastoff                  
+**Company:** Zerto (HPE)  
+**Version:** 1.0  
+**Date:** December 2025   
 "# LicenseView" 
