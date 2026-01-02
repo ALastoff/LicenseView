@@ -99,6 +99,12 @@ code config.yaml  # VS Code
 
 **PowerShell:**
 ```powershell
+# First run will auto-create auth.config.json placeholder (if you need it for custom modules)
+./zerto-licensing-report.ps1 -Config ./config.yaml -Verbose
+```
+
+**Note:** If you see a warning about `auth.config.json` being a placeholder, you can ignore it unless you're using a custom authentication module (see [docs/AUTH_CONFIG.md](AUTH_CONFIG.md)).
+```powershell
 .\zerto-licensing-report.ps1 -Config .\config.yaml
 ```
 

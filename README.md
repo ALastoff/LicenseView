@@ -168,22 +168,26 @@ If you need `auth.config.json` (for external auth modules), place your real file
 
 ## Authentication
 
-### Zerto 10.x (Keycloak)
+### Built-in Authentication
 
-Uses OpenID Connect client credentials flow:
+**Zerto 10.x (Keycloak OIDC):**
+
+Password grant flow with `openid` scope:
 
 ```yaml
 auth:
   version: "10.x"
-  client_id: "${ZVM_CLIENT_ID}"
-  client_secret: "${ZVM_CLIENT_SECRET}"
+  username: "${ZVM_USERNAME}"
+  password: "${ZVM_PASSWORD}"
+  client_id: "zerto-client"  # default Keycloak client
+  client_secret: ""  # optional, if your realm requires it
 ```
 
-Create a service account in Keycloak with `openid` scope.
+The tool automatically tries Keycloak token acquisition first, then falls back to legacy session auth if that fails.
 
-### Pre-10.x (Legacy)
+**Pre-10.x (Legacy Session):**
 
-Uses ZVM session authentication:
+Basic auth session token:
 
 ```yaml
 auth:
@@ -192,12 +196,33 @@ auth:
   password: "${ZVM_PASSWORD}"
 ```
 
+### Custom Authentication Module (Advanced)
+
+For enterprise environments with custom auth workflows, you can provide your own `ZertoAuth.psm1` module:
+
+```yaml
+auth_module_path: "C:\\Path\\To\\ZertoAuth.psm1"
+auth:
+  version: "10.x"
+  username: "${ZVM_USERNAME}"
+  password: "${ZVM_PASSWORD}"
+```
+
+Your module must export `Connect-ZertoApi` and `Invoke-ZertoApi` functions. See `docs/AUTH_CONFIG.md` for details.
+
+**Optional `auth.config.json`:**
+
+If your custom module requires a JSON config for multi-site/credential-manager integration, place `auth.config.json` next to the script. On first run, a sanitized template is auto-created from `assets/templates/auth.config.example.json`—edit it with your real hosts and credential targets.
+
+📖 **See [docs/AUTH_CONFIG.md](docs/AUTH_CONFIG.md)** for auth.config.json schema and packaging instructions.
+
 ## Configuration Reference
 
 | Field | Description | Default |
-|-------|-------------|---------|
+|-------|-------------|---------||
 | `zvm_url` | ZVM base URL | Required |
 | `auth.version` | `10.x` or `pre-10` | Required |
+| `auth_module_path` | Path to custom auth module (optional) | `null` |
 | `verify_tls` | Enable/disable TLS validation | `true` |
 | `certificate_thumbprint` | Windows certificate pinning | `null` |
 | `trusted_ca_path` | CA bundle path (cross-platform) | `null` |
