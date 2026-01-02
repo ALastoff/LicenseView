@@ -64,11 +64,11 @@ Query **Zerto REST APIs** to generate beautiful HTML dashboards showing license 
 
 ```bash
 # Option A: Clone with Git (if you have Git installed)
-git clone https://github.com/your-org/licenseview.git
-cd licenseview
+git clone https://github.com/ALastoff/LicenseView.git
+cd LicenseView
 
 # Option B: Download ZIP (no Git required)
-# Go to: https://github.com/your-org/licenseview
+# Go to: https://github.com/ALastoff/LicenseView
 # Click "Code" → "Download ZIP"
 # Extract and navigate to folder
 ```
@@ -90,7 +90,7 @@ cp config.example.yaml config.yaml
    Example: Your secure password (use environment variables in production!)
 
 4. **`verify_tls`** → `true` for production, `false` for lab environments  
-   See [TLS_SETUP_GUIDE.md](TLS_SETUP_GUIDE.md) for certificate configuration
+   See [docs/TLS_SETUP_GUIDE.md](docs/TLS_SETUP_GUIDE.md) for certificate configuration
 
 ---
 
@@ -141,7 +141,7 @@ For production with valid certificates, keep `verify_tls: true`.
 
 For lab environments with self-signed certificates:
 - Set `verify_tls: false` (you'll see a warning)
-- OR follow [TLS_SETUP_GUIDE.md](TLS_SETUP_GUIDE.md) to trust your lab certificate
+- OR follow [docs/TLS_SETUP_GUIDE.md](docs/TLS_SETUP_GUIDE.md) to trust your lab certificate
 
 ### Run Reports
 
@@ -340,13 +340,13 @@ Get-Content .\logs\report.log -Tail 50
 | Issue | Quick Fix |
 |-------|----------|
 | **Authentication failed** | Verify credentials in ZVM web UI, check `auth.version` |
-| **TLS validation error** | Set `verify_tls: false` (lab) or see [TLS_SETUP_GUIDE.md](TLS_SETUP_GUIDE.md) |
+| **TLS validation error** | Set `verify_tls: false` (lab) or see [docs/TLS_SETUP_GUIDE.md](docs/TLS_SETUP_GUIDE.md) |
 | **Empty reports** | Run with `-Verbose`, check `logs/report.log` for API errors |
 | **Config file not found** | Ensure path is correct: `-Config .\config.yaml` |
 
 ### 📖 Complete Troubleshooting Guide
 
-**See [TROUBLESHOOTING.md](TROUBLESHOOTING.md)** for:
+**See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** for:
 - Detailed error diagnosis
 - Step-by-step solutions
 - Advanced diagnostics
@@ -473,11 +473,11 @@ Invoke-ScriptAnalyzer -Path src/ps/ -Recurse
 
 ## Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
-- How to report bugs
-- Code standards (PowerShell & Python)
-- Pull request process
-- Development environment setup
+We welcome contributions! To contribute:
+- **Report bugs**: Open an issue on [GitHub Issues](https://github.com/ALastoff/LicenseView/issues)
+- **Request features**: Start a discussion on [GitHub Discussions](https://github.com/ALastoff/LicenseView/discussions)
+- **Submit code**: Fork the repo, make changes, and submit a pull request
+- **Code style**: Follow PSScriptAnalyzer rules for PowerShell, PEP 8 for Python
 
 ### Code Style
 
@@ -488,12 +488,11 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 ## Documentation
 
-- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - 🔧 Complete diagnostic and support guide
-- **[QUICKSTART.md](QUICKSTART.md)** - ⚡ 5-minute setup checklist
-- **[TLS_SETUP_GUIDE.md](TLS_SETUP_GUIDE.md)** - Certificate configuration for production & labs
-- **[SECURITY.md](SECURITY.md)** - Credential management, API permissions, compliance
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development guidelines and workflow
-- **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
+- **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - 🔧 Complete diagnostic and support guide
+- **[docs/QUICKSTART.md](docs/QUICKSTART.md)** - ⚡ 5-minute setup checklist
+- **[docs/TLS_SETUP_GUIDE.md](docs/TLS_SETUP_GUIDE.md)** - Certificate configuration for production & labs
+- **[docs/SECURITY.md](docs/SECURITY.md)** - Credential management, API permissions, compliance
+- **[docs/CHANGELOG.md](docs/CHANGELOG.md)** - Version history and release notes
 
 ## Roadmap
 
@@ -508,19 +507,18 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 ## Support & Community
 
 ### Get Help
-- **🔧 Troubleshooting**: [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Complete diagnostic guide
-- **🐛 Bug Reports**: [GitHub Issues](https://github.com/your-org/licenseview/issues)
-- **💡 Feature Requests**: [GitHub Discussions](https://github.com/your-org/licenseview/discussions)
-- **📖 Documentation**: [Project Wiki](https://github.com/your-org/licenseview/wiki)
-- **🔒 Security Issues**: See [SECURITY.md](SECURITY.md) for responsible disclosure
+- **🔧 Troubleshooting**: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Complete diagnostic guide
+- **🐛 Bug Reports**: [GitHub Issues](https://github.com/ALastoff/LicenseView/issues)
+- **💡 Feature Requests**: [GitHub Discussions](https://github.com/ALastoff/LicenseView/discussions)
+- **🔒 Security Issues**: See [docs/SECURITY.md](docs/SECURITY.md) for responsible disclosure
 
 ### Direct Support
 **For complex issues or collaboration:**
 - 📧 **Email**: aaron.lastoff@gmail.com
-- 🐙 **GitHub**: [@AaronLastoff](https://github.com/ALastoff)
-- 💼 **LinkedIn**: [@AaronLastoff](https://www.linkedin.com/in/aaron-lastoff/)
+- 🐙 **GitHub**: [@ALastoff](https://github.com/ALastoff)
+- 💼 **LinkedIn**: [Aaron Lastoff](https://www.linkedin.com/in/aaron-lastoff/)
 
-**Want to enhance LicenseView?** See [TROUBLESHOOTING.md](TROUBLESHOOTING.md#-want-to-enhance-licenseview) for collaboration opportunities!
+**Want to enhance LicenseView?** Open an issue or reach out via email for collaboration opportunities!
 
 ## License
 
