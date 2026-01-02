@@ -149,7 +149,7 @@ try {
     # Priority: 1) config.yaml auth_module_path, 2) built-in src/ps/Zerto.Auth.psm1
     $zertoAuthPath = $null
 
-    if ($configData.auth_module_path) {
+    if ($configData.auth_module_path -and $configData.auth_module_path -ne $null -and $configData.auth_module_path -ne "") {
         $zertoAuthPath = $configData.auth_module_path
         if (-not (Test-Path $zertoAuthPath)) {
             Write-Host "[ERROR] Custom auth module not found at configured path: $zertoAuthPath" -ForegroundColor Red
