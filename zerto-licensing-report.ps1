@@ -149,7 +149,7 @@ try {
     # Priority: 1) config.yaml auth_module_path, 2) built-in src/ps/Zerto.Auth.psm1
     $zertoAuthPath = $null
 
-    if ($configData.auth_module_path -and $configData.auth_module_path -ne $null -and $configData.auth_module_path -ne "") {
+    if ($configData.auth_module_path -and $configData.auth_module_path -ne $null -and $configData.auth_module_path -ne "" -and $configData.auth_module_path -ne "null") {
         $zertoAuthPath = $configData.auth_module_path
         if (-not (Test-Path $zertoAuthPath)) {
             Write-Host "[ERROR] Custom auth module not found at configured path: $zertoAuthPath" -ForegroundColor Red
@@ -169,6 +169,110 @@ try {
     }
 
     Import-Module $zertoAuthPath -Force -WarningAction SilentlyContinue
+
+    # ------------------------------------------------------------------
+    # Fallback lightweight API helpers when enterprise module is absent
+    # ------------------------------------------------------------------
+    if (-not (Get-Command Connect-ZertoApi -ErrorAction SilentlyContinue)) {
+        function Connect-ZertoApi {
+            param(
+                [Parameter(Mandatory = $true)][string]$ZvmUrl,
+                [Parameter(Mandatory = $true)][string]$Username,
+                [Parameter(Mandatory = $true)][string]$Password,
+                [bool]$VerifyTls = $true,
+                [int]$TimeoutSec = 60
+            )
+
+            # Basic auth to obtain x-zerto-session token (legacy flow works for 10.x with Basic)
+            $securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
+            $credential = New-Object System.Management.Automation.PSCredential($Username, $securePassword)
+
+            $sessionBody = @{ AuthenticationMethod = 1 } | ConvertTo-Json
+            $params = @{
+                Uri         = "$ZvmUrl/v1/session/add"
+                Method      = "POST"
+                Body        = $sessionBody
+                ContentType = "application/json"
+                Credential  = $credential
+                TimeoutSec  = $TimeoutSec
+                UseBasicParsing = $true
+            }
+
+            if (-not $VerifyTls) {
+                if ($PSVersionTable.PSVersion.Major -ge 6) {
+                    $params["SkipCertificateCheck"] = $true
+                } else {
+                    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+                }
+            }
+
+            $resp = Invoke-WebRequest @params
+
+            $token = $null
+            if ($resp.Headers -and $resp.Headers["x-zerto-session"]) {
+                $token = $resp.Headers["x-zerto-session"]
+            } elseif ($resp.Headers) {
+                foreach ($k in $resp.Headers.Keys) {
+                    if ($k -imatch 'x-zerto-session') { $token = $resp.Headers[$k]; break }
+                }
+            }
+
+            if (-not $token) { throw "No x-zerto-session token returned" }
+
+            return @{
+                Token          = $token
+                TokenType      = "x-zerto-session"
+                ZvmUrl         = $ZvmUrl
+                VerifyTls      = $VerifyTls
+                TimeoutSeconds = $TimeoutSec
+            }
+        }
+    }
+
+    if (-not (Get-Command Invoke-ZertoApi -ErrorAction SilentlyContinue)) {
+        function Invoke-ZertoApi {
+            param(
+                [Parameter(Mandatory = $true)][hashtable]$AuthContext,
+                [Parameter(Mandatory = $true)][string]$Endpoint,
+                [string]$Method = "GET",
+                $Body = $null
+            )
+
+            $headers = @{}
+            if ($AuthContext.TokenType -eq "x-zerto-session") {
+                $headers["x-zerto-session"] = $AuthContext.Token
+            } else {
+                $headers["Authorization"] = "Bearer $($AuthContext.Token)"
+            }
+            $headers["Accept"] = "application/json"
+
+            $params = @{
+                Uri            = "$($AuthContext.ZvmUrl)$Endpoint"
+                Method         = $Method
+                Headers        = $headers
+                TimeoutSec     = $AuthContext.TimeoutSeconds
+                UseBasicParsing= $true
+            }
+            if ($Body) { $params["Body"] = $Body }
+
+            if (-not $AuthContext.VerifyTls) {
+                if ($PSVersionTable.PSVersion.Major -ge 6) {
+                    $params["SkipCertificateCheck"] = $true
+                } else {
+                    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+                }
+            }
+
+            try {
+                return Invoke-RestMethod @params
+            }
+            finally {
+                if (-not $AuthContext.VerifyTls -and $PSVersionTable.PSVersion.Major -lt 6) {
+                    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
+                }
+            }
+        }
+    }
 
 # ═════════════════════════════════════════════════════════════════════════
 # ANONYMOUS USAGE REPORTING FUNCTION
