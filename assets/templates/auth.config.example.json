@@ -1,0 +1,122 @@
+{
+  "Description": "Zerto LicenseView - Authentication Configuration (sanitized example)",
+  "LastUpdated": "2026-01-02",
+  "Hypervisors": {
+    "Description": "Hypervisor/ZVMA Site Configurations",
+    "Site1": {
+      "Name": "Primary Site",
+      "Host": "zvm-primary.example.com",
+      "Port": 443,
+      "Description": "Primary Zerto ZVMA",
+      "Enabled": true,
+      "Credentials": "SourceZertoUI"
+    },
+    "Site2": {
+      "Name": "Secondary Site",
+      "Host": "zvm-secondary.example.com",
+      "Port": 443,
+      "Description": "Secondary Zerto ZVMA (Peer/Target)",
+      "Enabled": true,
+      "Credentials": "TargetZertoUI"
+    },
+    "Site3": {
+      "Name": "Tertiary Site",
+      "Host": "",
+      "Port": 443,
+      "Description": "Optional Third Zerto ZVMA",
+      "Enabled": false,
+      "Credentials": "TertiaryZertoUI"
+    }
+  },
+  "Accounts": {
+    "SourceZertoUI": {
+      "Description": "Source Zerto ZVMA UI Account (Keycloak)",
+      "Host": "zvm-primary.example.com",
+      "Port": 443,
+      "Realm": "zerto",
+      "ClientId": "zerto-client",
+      "GrantType": "password",
+      "UseCredentialManager": true,
+      "CredentialTarget": "Zerto-Source-UI",
+      "Enabled": true
+    },
+    "TargetZertoUI": {
+      "Description": "Target Zerto ZVMA UI Account (Keycloak)",
+      "Host": "zvm-secondary.example.com",
+      "Port": 443,
+      "Realm": "zerto",
+      "ClientId": "zerto-client",
+      "GrantType": "password",
+      "UseCredentialManager": true,
+      "CredentialTarget": "Zerto-Target-UI",
+      "Enabled": true
+    },
+    "TertiaryZertoUI": {
+      "Description": "Tertiary Zerto ZVMA UI Account (Keycloak) - Optional",
+      "Host": "",
+      "Port": 443,
+      "Realm": "zerto",
+      "ClientId": "zerto-client",
+      "GrantType": "password",
+      "UseCredentialManager": true,
+      "CredentialTarget": "Zerto-Tertiary-UI",
+      "Enabled": false
+    },
+    "SourceZertoOS": {
+      "Description": "Source Zerto ZVMA OS Account (SSH/Shell Access)",
+      "Host": "zvm-primary.example.com",
+      "Port": 22,
+      "PrivateKeyPath": "",
+      "UseCredentialManager": true,
+      "CredentialTarget": "Zerto-Source-OS",
+      "Enabled": false
+    },
+    "TargetZertoOS": {
+      "Description": "Target Zerto ZVMA OS Account (SSH/Shell Access)",
+      "Host": "",
+      "Port": 22,
+      "PrivateKeyPath": "",
+      "UseCredentialManager": true,
+      "CredentialTarget": "Zerto-Target-OS",
+      "Enabled": false
+    },
+    "MyZertoAccount": {
+      "Description": "MyZerto Account (For Analytics API)",
+      "ClientId": "",
+      "Region": "us-east-1",
+      "UseCredentialManager": true,
+      "CredentialTarget": "MyZerto-Account",
+      "Enabled": false
+    },
+    "SourceVCenterAccount": {
+      "Description": "Source vCenter Account (VM Inventory)",
+      "Host": "vcenter-primary.example.com",
+      "Port": 443,
+      "InsecureSsl": false,
+      "UseCredentialManager": true,
+      "CredentialTarget": "vCenter-Source",
+      "Enabled": false
+    },
+    "TargetVCenterAccount": {
+      "Description": "Target vCenter Account (VM Inventory)",
+      "Host": "",
+      "Port": 443,
+      "InsecureSsl": false,
+      "UseCredentialManager": true,
+      "CredentialTarget": "vCenter-Target",
+      "Enabled": false
+    }
+  },
+  "Analytics": {
+    "Description": "Analytics Authentication Settings",
+    "AuthMode": "bearer_file",
+    "BearerFilePath": "C:\\Path\\To\\Bearer.txt",
+    "UseCredentialManager": false,
+    "CredentialTarget": "Zerto-Analytics",
+    "Enabled": true
+  },
+  "Security": {
+    "InsecureTls": false,
+    "Description": "Set to false for production. Use true only in lab/testing."
+  }
+}

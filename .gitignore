@@ -1,6 +1,8 @@
 *.log
 *.old
 config.yaml
+auth.config.json
+.auth.config.json
 .env
 .env.local
 __pycache__/

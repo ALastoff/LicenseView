@@ -170,6 +170,20 @@ try {
 
     Import-Module $zertoAuthPath -Force -WarningAction SilentlyContinue
 
+    # If an auth.config.json is required by external modules, ensure a local copy exists
+    $authConfigExample = Join-Path $ScriptRoot "assets\\templates\\auth.config.example.json"
+    $authConfigLocal = Join-Path $ScriptRoot "auth.config.json"
+    $authConfigWasGenerated = $false
+    if (-not (Test-Path $authConfigLocal) -and (Test-Path $authConfigExample)) {
+        Copy-Item $authConfigExample $authConfigLocal -Force
+        $authConfigWasGenerated = $true
+        Write-Host "[INFO] Created local auth.config.json from sanitized example" -ForegroundColor Cyan
+    }
+
+    if ($authConfigWasGenerated) {
+        Write-Host "[WARN] auth.config.json is a placeholder. Update it with real host/realm/credential targets before production use." -ForegroundColor Yellow
+    }
+
     # ------------------------------------------------------------------
     # Fallback lightweight API helpers when enterprise module is absent
     # ------------------------------------------------------------------
@@ -180,10 +194,69 @@ try {
                 [Parameter(Mandatory = $true)][string]$Username,
                 [Parameter(Mandatory = $true)][string]$Password,
                 [bool]$VerifyTls = $true,
-                [int]$TimeoutSec = 60
+                [int]$TimeoutSec = 60,
+                [string]$AuthVersion = "10.x",
+                [string]$ClientId = "zerto-client",
+                [string]$ClientSecret = ""
             )
 
-            # Basic auth to obtain x-zerto-session token (legacy flow works for 10.x with Basic)
+            # Helper: Keycloak password grant
+            function Get-KeycloakToken {
+                param(
+                    [string]$TokenUrl,
+                    [string]$User,
+                    [string]$Pass,
+                    [string]$CId,
+                    [string]$CSecret
+                )
+
+                $body = @{
+                    grant_type = 'password'
+                    client_id  = $CId
+                    username   = $User
+                    password   = $Pass
+                }
+                if ($CSecret) { $body.client_secret = $CSecret }
+
+                $params = @{
+                    Uri         = $TokenUrl
+                    Method      = 'POST'
+                    Body        = $body
+                    ContentType = 'application/x-www-form-urlencoded'
+                    TimeoutSec  = $TimeoutSec
+                }
+
+                if (-not $VerifyTls) {
+                    if ($PSVersionTable.PSVersion.Major -ge 6) {
+                        $params["SkipCertificateCheck"] = $true
+                    } else {
+                        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+                    }
+                }
+
+                $resp = Invoke-RestMethod @params
+                if (-not $resp.access_token) { throw "No access_token returned from Keycloak" }
+                return $resp.access_token
+            }
+
+            if ($AuthVersion -eq "10.x") {
+                try {
+                    $tokenUrl = "$ZvmUrl/auth/realms/zerto/protocol/openid-connect/token"
+                    $jwt = Get-KeycloakToken -TokenUrl $tokenUrl -User $Username -Pass $Password -CId $ClientId -CSecret $ClientSecret
+                    return @{
+                        Token          = $jwt
+                        TokenType      = "Bearer"
+                        ZvmUrl         = $ZvmUrl
+                        VerifyTls      = $VerifyTls
+                        TimeoutSeconds = $TimeoutSec
+                    }
+                }
+                catch {
+                    Write-Host "[WARN] Keycloak token acquisition failed, trying legacy session auth..." -ForegroundColor Yellow
+                }
+            }
+
+            # Legacy session auth (works on pre-10 and many 10.x with Basic)
             $securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
             $credential = New-Object System.Management.Automation.PSCredential($Username, $securePassword)
 
@@ -334,7 +407,21 @@ function Send-UsageReport {
     $password = $configData.auth.password
     $verifyTls = $configData.verify_tls
     
-    $auth = Connect-ZertoApi -ZvmUrl $zvmUrl -Username $username -Password $password -VerifyTls $verifyTls
+    $authParams = @{ ZvmUrl = $zvmUrl; Username = $username; Password = $password; VerifyTls = $verifyTls }
+    $connectCmd = Get-Command Connect-ZertoApi -ErrorAction SilentlyContinue
+    if ($connectCmd -and $connectCmd.Parameters.ContainsKey('AuthVersion')) {
+        $authParams['AuthVersion'] = $configData.auth.version
+    }
+    if ($connectCmd -and $connectCmd.Parameters.ContainsKey('ClientId')) {
+        $authParams['ClientId'] = $configData.auth.client_id
+    }
+    if ($connectCmd -and $connectCmd.Parameters.ContainsKey('ClientSecret')) {
+        $authParams['ClientSecret'] = $configData.auth.client_secret
+    }
+    if ($connectCmd -and $connectCmd.Parameters.ContainsKey('TimeoutSec')) {
+        $authParams['TimeoutSec'] = $configData.timeout_seconds
+    }
+    $auth = Connect-ZertoApi @authParams
 
     # Get license information
     Write-Host "Retrieving license information..." -ForegroundColor Green
@@ -455,7 +542,7 @@ function Send-UsageReport {
     # If no history exists, generate synthetic demo data
     if (-not $history -or $history.days_7.Count -eq 0) {
         Write-Host "  No historical data found. Generating synthetic 90-day demo..." -ForegroundColor Yellow
-        $history = Get-SyntheticHistory -CurrentProtectedVMs $consumption.protected_vms
+        $history = Get-SyntheticHistory -CurrentVMs $consumption.protected_vms
     }
 
     # Save current snapshot for future trend building

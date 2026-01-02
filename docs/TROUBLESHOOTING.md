@@ -6,6 +6,37 @@ Having issues with LicenseView? This guide will help you diagnose and resolve co
 
 ## 🚨 Quick Diagnostics
 
+### PowerShell Execution Policy Error
+
+**Error Message:**
+```
+The file ... cannot be loaded. The file ... is not digitally signed. 
+You cannot run this script on the current system.
+```
+
+**Solution:**
+
+```powershell
+# Allow scripts to run for current user (safe, permanent)
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+
+# Verify it worked
+Get-ExecutionPolicy -Scope CurrentUser
+
+# Now run the script
+.\zerto-licensing-report.ps1 -Config ./config.yaml -Verbose
+```
+
+**Why this happens:** PowerShell has security policies to prevent malicious scripts. `RemoteSigned` allows local scripts but still checks downloaded scripts.
+
+**Alternative (temporary, single session):**
+```powershell
+# Bypass for current PowerShell session only (not recommended for regular use)
+powershell -ExecutionPolicy Bypass -File .\zerto-licensing-report.ps1 -Config ./config.yaml
+```
+
+---
+
 ### Enable Verbose Logging
 
 **Always start troubleshooting with verbose logging enabled:**
@@ -32,6 +63,13 @@ The log file contains:
 ## 🔍 Common Issues & Solutions
 
 ### 1️⃣ Authentication Failures
+
+#### Zerto 10.x (Keycloak) quick checklist
+- Ensure `auth.version: "10.x"` in `config.yaml` (or `pre-10` for legacy)
+- Populate `auth.username` and `auth.password`; add `auth.client_id` / `auth.client_secret` if your Keycloak realm requires them (defaults to `zerto-client`)
+- Keep only **one** `config.yaml` in the repo root to avoid pulling the wrong file
+- If you use a custom enterprise auth module, set `auth_module_path` to the fully qualified `.psm1`; otherwise the built-in fallback will perform Keycloak first and legacy session auth second
+- For lab TLS bypass, set `verify_tls: false` **and** pass `-Insecure`; production should use `trusted_ca_path` or `certificate_thumbprint`
 
 #### Error: "Authentication failed: Invalid credentials"
 

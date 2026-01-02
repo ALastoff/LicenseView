@@ -147,6 +147,7 @@ For lab environments with self-signed certificates:
 
 **PowerShell:**
 ```powershell
+# First run will auto-create a sanitized auth.config.json from the template if missing
 ./zerto-licensing-report.ps1 -Config ./config.yaml -Verbose
 ```
 
@@ -162,6 +163,8 @@ Reports are generated in the configured `output_dir`:
 - **report.html** — Interactive dashboard (open in browser)
 - **licensing_utilization.csv** — Tabular data for Excel/BI
 - **licensing_utilization.json** — Structured data for API integrations
+
+If you need `auth.config.json` (for external auth modules), place your real file next to the script/exe; the repo ships a sanitized template at `assets/templates/auth.config.example.json`.
 
 ## Authentication
 
