@@ -55,6 +55,9 @@ $ErrorActionPreference = "Stop"
 $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $VER = "1.0.0"
 
+# Start timing execution
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
 # Display help
 if ($Help) {
     Write-Host "`nLicenseView - PowerShell Edition" -ForegroundColor Green
@@ -166,6 +169,57 @@ try {
     }
 
     Import-Module $zertoAuthPath -Force -WarningAction SilentlyContinue
+
+# ═════════════════════════════════════════════════════════════════════════
+# ANONYMOUS USAGE REPORTING FUNCTION
+# ═════════════════════════════════════════════════════════════════════════
+# Sends anonymous usage data to help improve the tool
+# NO credentials, URLs, or personal data is collected
+function Send-UsageReport {
+    param(
+        [bool]$Success,
+        [string]$Version,
+        [int]$Runtime,
+        [string]$ZertoVersion = "unknown",
+        [string]$ErrorMessage = $null
+    )
+    
+    try {
+        $timestamp = [DateTime]::UtcNow.ToString("o")
+        $hostname = (Get-Random -Minimum 100000 -Maximum 999999).ToString()  # Random ID, not real hostname
+        
+        # Build report (NO sensitive data!)
+        $report = @{
+            timestamp = $timestamp
+            tool_version = $Version
+            runtime_ms = $Runtime
+            success = $Success
+            zerto_version = if ($ZertoVersion) { "detected" } else { "unknown" }
+            error_type = if ($ErrorMessage) { "auth_error" } else { $null }
+            powershell_version = $PSVersionTable.PSVersion.Major
+            os = if ($PSVersionTable.PSVersion.Major -ge 7) { "cross-platform" } else { "windows" }
+        } | ConvertTo-Json
+        
+        # Send to simple analytics endpoint (you can use your own)
+        $reportUri = "https://licenseview-analytics.azurewebsites.net/api/report"
+        
+        $params = @{
+            Uri = $reportUri
+            Method = "POST"
+            Body = $report
+            ContentType = "application/json"
+            TimeoutSec = 5
+            ErrorAction = "SilentlyContinue"
+        }
+        
+        Invoke-WebRequest @params | Out-Null
+        Write-Verbose "[TELEMETRY] Anonymous usage report sent (success=$Success, runtime=${Runtime}ms)"
+    }
+    catch {
+        # Silently fail - don't disrupt the user experience if reporting has issues
+        Write-Verbose "[TELEMETRY] Report sending failed (non-critical): $_"
+    }
+}
 
     # Authenticate with ZVM using enterprise module
     Write-Host "Authenticating with Zerto Virtual Manager..." -ForegroundColor Green
@@ -355,6 +409,11 @@ try {
         Write-Host "  - JSON Export: $(Join-Path $OutputDir 'licensing_utilization.json')" -ForegroundColor Green
     }
     
+    # Send anonymous usage report if enabled
+    if ($configData.reporting.enabled -eq $true) {
+        Send-UsageReport -Success $true -Version $VER -Runtime $sw.ElapsedMilliseconds -ZertoVersion $zertoVersion
+    }
+    
     # Built by ALastoff Production
     
     exit 0
@@ -373,6 +432,11 @@ try {
 
     Write-Host "Tip: Run with -DebugMode for detailed logging" -ForegroundColor Yellow
     Write-Host ""
+    
+    # Send failure report if enabled
+    if ($configData.reporting.enabled -eq $true) {
+        Send-UsageReport -Success $false -Version $VER -Runtime $sw.ElapsedMilliseconds -ErrorMessage $_.Exception.Message
+    }
     
     exit 2
 }
