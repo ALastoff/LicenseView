@@ -1,530 +1,459 @@
-# Zerto.Auth.psm1 - DEPRECATED - Using Enterprise ZertoAuth Module
-#
-# NOTE: This module is maintained for backward compatibility only.
-# For new tools and scripts, use the enterprise ZertoAuth module:
-# C:\Users\Administrator\Documents\Scripts\Helpful Mods\File that connects to ZVM REST APIs\ZertoAuth.psm1
-#
-# The Licensing Report tool has been refactored to use the centralized ZertoAuth module
-# for professional, enterprise-grade authentication management.
-
-Write-Warning "The local Zerto.Auth.psm1 module is deprecated."
-Write-Warning "This tool now uses the enterprise ZertoAuth module for all authentication."
-Write-Warning "See: C:\Users\Administrator\Documents\Scripts\Helpful Mods\File that connects to ZVM REST APIs\"
-
-# Placeholder exports to maintain backward compatibility
-Export-ModuleMember -Function @()
+# ZertoAuth.psm1 - Reusable Zerto REST API Authentication Module
+# Version: 1.0.0
+# Compatible with: Zerto 10.x (Keycloak) and pre-10.x (Legacy)
 
 <#
 .SYNOPSIS
-    Authenticate to Zerto Virtual Manager (DEPRECATED)
-    
+    Authenticate to Zerto Virtual Manager REST API
+
 .DESCRIPTION
-    DEPRECATED - Use Connect-ZertoApi from the enterprise ZertoAuth module instead.
-    Determines version and uses appropriate auth method:
-    - Zerto 10.x: Keycloak OpenID Connect (client_credentials or password)
-    - Pre-10.x: Legacy session token auth
+    Automatically detects Zerto version and uses the appropriate authentication method:
+    - Zerto 10.x: Keycloak OpenID Connect (with 'openid' scope for API access)
+    - Pre-10.x: Legacy session-based authentication
+
+.PARAMETER ZvmUrl
+    The base URL of the Zerto Virtual Manager (e.g., https://zvm.example.com)
+
+.PARAMETER Username
+    Username for authentication
+
+.PARAMETER Password
+    Password for authentication (SecureString or plain text)
+
+.PARAMETER ClientId
+    Keycloak client ID (default: zerto-client). Only used for Zerto 10.x
+
+.PARAMETER ClientSecret
+    Keycloak client secret (optional). Only used for client_credentials flow
+
+.PARAMETER VerifyTls
+    Whether to verify TLS certificates (default: $true). Set to $false for self-signed certs
+
+.PARAMETER TimeoutSeconds
+    Request timeout in seconds (default: 60)
+
+.EXAMPLE
+    $auth = Connect-ZertoApi -ZvmUrl "https://192.168.111.20" -Username "admin" -Password "MyPassword" -VerifyTls $false
+    
+.EXAMPLE
+    $securePass = ConvertTo-SecureString "MyPassword" -AsPlainText -Force
+    $auth = Connect-ZertoApi -ZvmUrl "https://zvm.example.com" -Username "admin" -Password $securePass
+
+.EXAMPLE
+    # Use the returned auth context for API calls
+    $auth = Connect-ZertoApi -ZvmUrl "https://192.168.111.20" -Username "admin" -Password "MyPassword"
+    $license = Invoke-ZertoApi -AuthContext $auth -Endpoint "/v1/license"
+
+.OUTPUTS
+    Hashtable with authentication context:
+    - Token: Bearer token or session token
+    - TokenType: "Bearer" or "x-zerto-session"
+    - ZvmUrl: The ZVM base URL
+    - ExpiresAt: Token expiration time
+    - VerifyTls: TLS verification setting
 #>
-function Invoke-ZertoAuthentication {
+function Connect-ZertoApi {
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [hashtable]$Config,
-        
+        [ValidateNotNullOrEmpty()]
+        [string]$ZvmUrl,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Username,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        $Password,
+
+        [string]$ClientId = "zerto-client",
+
+        [string]$ClientSecret,
+
         [bool]$VerifyTls = $true,
-        
+
         [int]$TimeoutSeconds = 60
     )
-    
-    # Determine auth version
-    $authVersion = $Config.auth.version
-    
-    Write-Verbose "Authenticating to Zerto ($authVersion)..."
-    
-    # Check for demo mode (if URL contains "demo" or credentials contain "demo")
-    $isDemoMode = $Config.zvm_url -match "demo" -or 
-                  $Config.auth.client_id -match "demo" -or
-                  $Config.auth.username -match "demo"
-    
-    if ($isDemoMode) {
-        Write-Host "      [DEMO MODE] Using mock authentication data" -ForegroundColor Yellow
-        
-        # Return mock auth context
-        return @{
-            Version        = $authVersion
-            ZvmUrl         = $Config.zvm_url
-            VerifyTls      = $VerifyTls
-            TimeoutSeconds = $TimeoutSeconds
-            Timestamp      = Get-Date
-            Token          = "mock-bearer-token-12345"
-            TokenType      = "Bearer"
-            DemoMode       = $true
+
+    # Convert password to plain text if it's a SecureString
+    if ($Password -is [System.Security.SecureString]) {
+        $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
+        $plainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
+    }
+    else {
+        $plainPassword = $Password
+    }
+
+    # Normalize ZVM URL (remove trailing slash)
+    $ZvmUrl = $ZvmUrl.TrimEnd('/')
+
+    Write-Verbose "Connecting to Zerto API at: $ZvmUrl"
+
+    # Configure TLS bypass if needed
+    if (-not $VerifyTls) {
+        Write-Warning "TLS certificate verification is disabled. This should only be used in lab environments."
+        if ($PSVersionTable.PSVersion.Major -lt 6) {
+            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
         }
     }
-    
-    # Create auth context
-    $authContext = @{
-        Version        = $authVersion
-        ZvmUrl         = $Config.zvm_url
-        VerifyTls      = $VerifyTls
-        TimeoutSeconds = $TimeoutSeconds
-        Timestamp      = Get-Date
-    }
-    
+
     try {
-        if ($authVersion -eq "10.x") {
-            # For 10.x with username/password, try direct session creation with Basic Auth
-            # This is the correct flow per Zerto 10.0 REST API documentation
-            $username = Expand-EnvironmentVariables -Content $Config.auth.username
-            $password = Expand-EnvironmentVariables -Content $Config.auth.password
+        # Try Keycloak authentication (Zerto 10.x)
+        $keycloakUrl = "$ZvmUrl/auth/realms/zerto/protocol/openid-connect/token"
+        
+        # CRITICAL: Include 'openid' scope for API access
+        $body = "grant_type=password&client_id=$ClientId&username=$Username&password=$([Uri]::EscapeDataString($plainPassword))&scope=openid"
+        
+        $params = @{
+            Uri             = $keycloakUrl
+            Method          = "POST"
+            Body            = $body
+            ContentType     = "application/x-www-form-urlencoded"
+            TimeoutSec      = $TimeoutSeconds
+            UseBasicParsing = $true
+        }
+
+        if (-not $VerifyTls -and $PSVersionTable.PSVersion.Major -ge 6) {
+            $params["SkipCertificateCheck"] = $true
+        }
+
+        Write-Verbose "Attempting Keycloak authentication..."
+        $response = Invoke-RestMethod @params -ErrorAction Stop
+
+        if ($response.access_token) {
+            Write-Verbose "Successfully authenticated with Keycloak (Zerto 10.x)"
             
-            Write-Host "      [DEBUG] Raw username: $($Config.auth.username)" -ForegroundColor DarkGray
-            Write-Host "      [DEBUG] Expanded username: $username" -ForegroundColor DarkGray
-            Write-Host "      [DEBUG] Has password: $($password -ne $null -and $password -ne '')" -ForegroundColor DarkGray
-            Write-Host "      [DEBUG] Username check: $($username -notmatch '^\$\{')" -ForegroundColor DarkGray
-            
-            if ($username -and $password -and 
-                ($username -notmatch '^\$\{') -and ($password -notmatch '^\$\{')) {
-                
-                Write-Host "      [*] Creating ZVM API session with Basic Auth..." -ForegroundColor Cyan
-                
-                try {
-                    # Create credential for Basic Auth
-                    $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
-                    $credential = New-Object System.Management.Automation.PSCredential($username, $securePassword)
-                    
-                    # Session body as per Zerto API
-                    $sessionBody = @{
-                        AuthenticationMethod = 1
-                    } | ConvertTo-Json
-                    
-                    $sessionParams = @{
-                        Uri = "$($Config.zvm_url)/v1/session/add"
-                        Method = "POST"
-                        Body = $sessionBody
-                        ContentType = "application/json"
-                        Credential = $credential
-                        TimeoutSec = $TimeoutSeconds
-                        UseBasicParsing = $true
-                    }
-                    
-                    if (-not $VerifyTls) {
-                        if ($PSVersionTable.PSVersion.Major -lt 6) {
-                            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-                        }
-                    }
-                    
-                    $sessionResponse = Invoke-WebRequest @sessionParams
-                    Write-Verbose "Session creation response status: $($sessionResponse.StatusCode)"
-                    
-                    # Extract x-zerto-session token from response headers
-                    $zvmToken = $null
-                    if ($sessionResponse.Headers) {
-                        if ($sessionResponse.Headers.ContainsKey('x-zerto-session')) {
-                            $zvmToken = $sessionResponse.Headers['x-zerto-session']
-                        }
-                        elseif ($sessionResponse.Headers.'x-zerto-session') {
-                            $zvmToken = $sessionResponse.Headers.'x-zerto-session'
-                        }
-                        else {
-                            foreach ($key in $sessionResponse.Headers.Keys) {
-                                if ($key -imatch 'x-zerto-session') {
-                                    $zvmToken = $sessionResponse.Headers[$key]
-                                    break
-                                }
-                            }
-                        }
-                    }
-                    
-                    if ($zvmToken) {
-                        Write-Host "      [OK] ZVM session token obtained" -ForegroundColor Green
-                        $authContext["Token"] = $zvmToken
-                        $authContext["TokenType"] = "x-zerto-session"
-                        return $authContext
-                    }
-                    else {
-                        Write-Host "      [ERROR] No x-zerto-session token in response" -ForegroundColor Red
-                        throw "Session creation succeeded but no token returned"
-                    }
-                }
-                catch {
-                    Write-Host "      [WARN] Direct session creation failed: $($_.Exception.Message)" -ForegroundColor Yellow
-                }
-                finally {
-                    if (-not $VerifyTls -and $PSVersionTable.PSVersion.Major -lt 6) {
-                        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
-                    }
-                }
+            # Calculate expiration time
+            $expiresAt = (Get-Date).AddSeconds($response.expires_in)
+
+            return @{
+                Token          = $response.access_token
+                TokenType      = "Bearer"
+                RefreshToken   = $response.refresh_token
+                ZvmUrl         = $ZvmUrl
+                ExpiresAt      = $expiresAt
+                ExpiresIn      = $response.expires_in
+                Scope          = $response.scope
+                VerifyTls      = $VerifyTls
+                TimeoutSeconds = $TimeoutSeconds
+                ZertoVersion   = "10.x"
             }
-            
-            # If direct session failed or no username/password, try Keycloak
-            Write-Host "      [*] Trying Keycloak authentication..." -ForegroundColor Cyan
-            $keycloakToken = Invoke-KeycloakAuth -Config $Config -TimeoutSeconds $TimeoutSeconds -VerifyTls $VerifyTls
-            
-            # Use the Keycloak token directly with Bearer authentication
-            $authContext["Token"] = $keycloakToken
-            $authContext["TokenType"] = "Bearer"
         }
-        else {
-            # Pre-10.x legacy authentication
-            $token = Invoke-LegacyAuth -Config $Config -TimeoutSeconds $TimeoutSeconds -VerifyTls $VerifyTls
-            $authContext["Token"] = $token
-            $authContext["TokenType"] = "Bearer"
-        }
-        
-        if (-not $token) {
-            throw "Authentication failed: No token received"
-        }
-        
-        return $authContext
     }
     catch {
-        Write-Host "[ERROR] Authentication failed: $($_.Exception.Message)" -ForegroundColor Red
-        throw
-    }
-}
+        Write-Verbose "Keycloak authentication failed: $($_.Exception.Message)"
+        Write-Verbose "Falling back to legacy authentication..."
 
-<#
-.SYNOPSIS
-    Keycloak OpenID Connect authentication for Zerto 10.x
-#>
-function Invoke-KeycloakAuth {
-    param(
-        [Parameter(Mandatory = $true)]
-        [hashtable]$Config,
-        
-        [int]$TimeoutSeconds = 60,
-        
-        [bool]$VerifyTls = $true
-    )
-    
-    $tokenUrl = "$($Config.zvm_url)/auth/realms/zerto/protocol/openid-connect/token"
-    
-    # Prepare credentials - expand environment variables
-    $clientId = Expand-EnvironmentVariables -Content $Config.auth.client_id
-    $clientSecret = Expand-EnvironmentVariables -Content $Config.auth.client_secret
-    $username = Expand-EnvironmentVariables -Content $Config.auth.username
-    $password = Expand-EnvironmentVariables -Content $Config.auth.password
-    
-    # Determine grant type and authenticate
-    if ($clientId -and $clientSecret -and (-not $username -or $username -match '^\$\{')) {
-        # Client credentials flow
-        Write-Verbose "Using client_credentials grant"
-        
-        $body = @{
-            grant_type    = "client_credentials"
-            client_id     = $clientId
-            client_secret = $clientSecret
-        }
-        
+        # Try legacy authentication (pre-10.x)
         try {
+            $sessionUrl = "$ZvmUrl/v1/session/add"
+            $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${Username}:${plainPassword}"))
+            
             $params = @{
-                Uri             = $tokenUrl
+                Uri             = $sessionUrl
                 Method          = "POST"
-                Body            = $body
-                ContentType     = "application/x-www-form-urlencoded"
+                Headers         = @{ Authorization = "Basic $base64Auth" }
                 TimeoutSec      = $TimeoutSeconds
                 UseBasicParsing = $true
             }
-            
-            if (-not $VerifyTls) {
-                if ($PSVersionTable.PSVersion.Major -ge 6) {
-                    $params["SkipCertificateCheck"] = $true
-                }
-                else {
-                    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-                }
+
+            if (-not $VerifyTls -and $PSVersionTable.PSVersion.Major -ge 6) {
+                $params["SkipCertificateCheck"] = $true
             }
+
+            $response = Invoke-WebRequest @params -ErrorAction Stop
+
+            # Extract session token from response headers
+            $sessionToken = $response.Headers["x-zerto-session"]
             
-            $response = Invoke-WebRequest @params
-            $data = $response.Content | ConvertFrom-Json
-            
-            if ($data.access_token) {
-                Write-Verbose "Successfully obtained access token via client_credentials"
-                return $data.access_token
+            if ($sessionToken) {
+                Write-Verbose "Successfully authenticated with legacy session (pre-10.x)"
+                
+                return @{
+                    Token          = $sessionToken
+                    TokenType      = "x-zerto-session"
+                    ZvmUrl         = $ZvmUrl
+                    ExpiresAt      = (Get-Date).AddHours(24)  # Estimate
+                    VerifyTls      = $VerifyTls
+                    TimeoutSeconds = $TimeoutSeconds
+                    ZertoVersion   = "pre-10.x"
+                }
             }
             else {
-                throw "No access token in response"
+                throw "No session token returned from ZVM"
             }
         }
         catch {
-            Write-Host "[ERROR] Keycloak client_credentials auth failed: $($_.Exception.Message)" -ForegroundColor Red
-            throw
-        }
-        finally {
-            if (-not $VerifyTls -and $PSVersionTable.PSVersion.Major -lt 6) {
-                [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
-            }
+            throw "Failed to authenticate to Zerto API using both Keycloak and legacy methods. Error: $($_.Exception.Message)"
         }
     }
-    elseif ($username -and $password) {
-        # Password grant flow - try common Zerto Keycloak public clients
-        $tryClients = @("zerto-client", "zerto-public", "admin-cli", "zerto")
-        
-        foreach ($clientName in $tryClients) {
-            Write-Verbose "Trying password grant with client: $clientName"
-            
-            # Build form-encoded body (NOT JSON)
-            # CRITICAL: Include 'openid' scope for API access
-            $body = "grant_type=password&client_id=$clientName&username=$username&password=$([Uri]::EscapeDataString($password))&scope=openid"
-            
-            try {
-                # Prepare Invoke-WebRequest parameters
-                $params = @{
-                    Uri             = $tokenUrl
-                    Method          = "POST"
-                    Body            = $body
-                    ContentType     = "application/x-www-form-urlencoded"
-                    TimeoutSec      = $TimeoutSeconds
-                    UseBasicParsing = $true
-                }
-                
-                # Handle TLS verification
-                if (-not $VerifyTls) {
-                    if ($PSVersionTable.PSVersion.Major -ge 6) {
-                        $params["SkipCertificateCheck"] = $true
-                    }
-                    else {
-                        # PowerShell 5.1 workaround
-                        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-                    }
-                }
-                
-                $response = Invoke-WebRequest @params
-                $data = $response.Content | ConvertFrom-Json
-                
-                if ($data.access_token) {
-                    Write-Host "      [OK] Authenticated with client: $clientName" -ForegroundColor Green
-                    Write-Verbose "Successfully obtained access token"
-                    return $data.access_token
-                }
-            }
-            catch {
-                Write-Verbose "Client $clientName failed: $($_.Exception.Message)"
-                # Continue to next client
-                continue
-            }
-            finally {
-                # Reset certificate validation if changed
-                if (-not $VerifyTls -and $PSVersionTable.PSVersion.Major -lt 6) {
-                    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
-                }
-            }
+    finally {
+        # Reset TLS callback if it was changed
+        if (-not $VerifyTls -and $PSVersionTable.PSVersion.Major -lt 6) {
+            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
         }
-        
-        # If we get here, all clients failed
-        throw "Password grant failed with all attempted clients: $($tryClients -join ', ')"
+    }
+}
+
+<#
+.SYNOPSIS
+    Make a REST API call to Zerto Virtual Manager
+
+.DESCRIPTION
+    Executes a REST API call using the authentication context from Connect-ZertoApi
+
+.PARAMETER AuthContext
+    Authentication context returned from Connect-ZertoApi
+
+.PARAMETER Endpoint
+    API endpoint path (e.g., "/v1/license", "/v1/vpgs")
+
+.PARAMETER Method
+    HTTP method (default: GET)
+
+.PARAMETER Body
+    Request body for POST/PUT/PATCH requests
+
+.EXAMPLE
+    $auth = Connect-ZertoApi -ZvmUrl "https://192.168.111.20" -Username "admin" -Password "MyPassword"
+    $license = Invoke-ZertoApi -AuthContext $auth -Endpoint "/v1/license"
+
+.EXAMPLE
+    $vpgs = Invoke-ZertoApi -AuthContext $auth -Endpoint "/v1/vpgs" -Method GET
+
+.OUTPUTS
+    API response as PowerShell object
+#>
+function Invoke-ZertoApi {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$AuthContext,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Endpoint,
+
+        [ValidateSet("GET", "POST", "PUT", "PATCH", "DELETE")]
+        [string]$Method = "GET",
+
+        [object]$Body
+    )
+
+    # Check if token is expired
+    if ($AuthContext.ExpiresAt -and (Get-Date) -gt $AuthContext.ExpiresAt) {
+        Write-Warning "Authentication token has expired. Please reconnect using Connect-ZertoApi."
+        throw "Token expired"
+    }
+
+    # Normalize endpoint (ensure it starts with /)
+    if (-not $Endpoint.StartsWith('/')) {
+        $Endpoint = "/$Endpoint"
+    }
+
+    $uri = "$($AuthContext.ZvmUrl)$Endpoint"
+
+    # Build headers based on token type
+    if ($AuthContext.TokenType -eq "x-zerto-session") {
+        $headers = @{
+            "x-zerto-session" = $AuthContext.Token
+            "Accept"          = "application/json"
+        }
     }
     else {
-        throw "Keycloak auth requires either (client_id + client_secret) or (username + password)"
-    }
-}
-
-<#
-.SYNOPSIS
-    Legacy session authentication for pre-10.x Zerto
-#>
-function Invoke-LegacyAuth {
-    param(
-        [Parameter(Mandatory = $true)]
-        [hashtable]$Config,
-        
-        [int]$TimeoutSeconds = 60,
-        
-        [bool]$VerifyTls = $true
-    )
-    
-    $loginUrl = "$($Config.zvm_url)/v1/session/add"
-    
-    # Prepare credentials (expand environment variables)
-    $username = Expand-EnvironmentVariables -Content $Config.auth.username
-    $password = Expand-EnvironmentVariables -Content $Config.auth.password
-    
-    if (-not $username -or -not $password) {
-        throw "Legacy auth requires username and password"
-    }
-    
-    # Build request body
-    $body = @{
-        AuthenticationMethod = 1
-        Username             = $username
-        Password             = $password
-    } | ConvertTo-Json
-    
-    Write-Verbose "Requesting session from: $loginUrl"
-    
-    try {
-        # Prepare Invoke-WebRequest parameters
-        $params = @{
-            Uri             = $loginUrl
-            Method          = "POST"
-            Body            = $body
-            ContentType     = "application/json"
-            TimeoutSec      = $TimeoutSeconds
-            UseBasicParsing = $true
-        }
-        
-        # Handle TLS verification
-        if (-not $VerifyTls) {
-            if ($PSVersionTable.PSVersion.Major -ge 6) {
-                $params["SkipCertificateCheck"] = $true
-            }
-            else {
-                # PowerShell 5.1 workaround
-                [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-            }
-        }
-        
-        $response = Invoke-WebRequest @params
-        
-        # Session token is in x-zerto-session header
-        $sessionToken = $response.Headers["x-zerto-session"]
-        
-        if ($sessionToken) {
-            Write-Verbose "Successfully obtained session token"
-            return $sessionToken
-        }
-        else {
-            throw "No session token in response headers"
-        }
-    }
-    catch {
-        Write-Host "[ERROR] Legacy auth failed: $($_.Exception.Message)" -ForegroundColor Red
-        throw
-    }
-    finally {
-        # Reset certificate validation if changed
-        if (-not $VerifyTls -and $PSVersionTable.PSVersion.Major -lt 6) {
-            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
-        }
-    }
-}
-
-<#
-.SYNOPSIS
-    Exchange Keycloak access token for Zerto API session token
-    
-.DESCRIPTION
-    In Zerto 10.x, the Keycloak access token must be exchanged for a Zerto-specific
-    session token (x-zerto-session) that can access the /v1/* API endpoints.
-#>
-function ConvertTo-ZertoSession {
-    param(
-        [Parameter(Mandatory = $true)]
-        [hashtable]$Config,
-        
-        [Parameter(Mandatory = $true)]
-        [string]$KeycloakToken,
-        
-        [int]$TimeoutSeconds = 60,
-        
-        [bool]$VerifyTls = $true
-    )
-    
-    try {
-        $sessionUrl = "$($Config.zvm_url)/v1/session/add"
-        
-        Write-Verbose "Exchanging Keycloak token for Zerto session at: $sessionUrl"
-        
         $headers = @{
-            "Authorization" = "Bearer $KeycloakToken"
-            "Content-Type"  = "application/json"
-        }
-        
-        # Empty body - the Bearer token is what matters
-        $body = "{}"
-        
-        $params = @{
-            Uri             = $sessionUrl
-            Method          = "POST"
-            Headers         = $headers
-            Body            = $body
-            TimeoutSec      = $TimeoutSeconds
-            UseBasicParsing = $true
-        }
-        
-        if (-not $VerifyTls) {
-            if ($PSVersionTable.PSVersion.Major -ge 6) {
-                $params["SkipCertificateCheck"] = $true
-            }
-            else {
-                [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-            }
-        }
-        
-        $response = Invoke-WebRequest @params
-        
-        # The Zerto session token is returned in the x-zerto-session response header
-        $sessionToken = $null
-        if ($response.Headers.ContainsKey('x-zerto-session')) {
-            $sessionToken = $response.Headers['x-zerto-session']
-        }
-        elseif ($response.Headers.'x-zerto-session') {
-            $sessionToken = $response.Headers.'x-zerto-session'
-        }
-        else {
-            # Try to find it case-insensitively
-            foreach ($key in $response.Headers.Keys) {
-                if ($key -imatch 'x-zerto-session') {
-                    $sessionToken = $response.Headers[$key]
-                    break
-                }
-            }
-        }
-        
-        if ($sessionToken) {
-            Write-Verbose "Successfully obtained Zerto session token"
-            return $sessionToken
-        }
-        else {
-            Write-Warning "No x-zerto-session header in response. Available headers: $($response.Headers.Keys -join ', ')"
-            return $null
+            "Authorization" = "Bearer $($AuthContext.Token)"
+            "Accept"        = "application/json"
         }
     }
-    catch {
-        Write-Warning "Failed to exchange token for Zerto session: $($_.Exception.Message)"
-        return $null
-    }
-    finally {
-        if (-not $VerifyTls -and $PSVersionTable.PSVersion.Major -lt 6) {
-            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
-        }
-    }
-}
 
-<#
-.SYNOPSIS
-    Get Zerto Virtual Manager version
-#>
-function Get-ZertoVersion {
-    param(
-        [Parameter(Mandatory = $true)]
-        [hashtable]$AuthContext
-    )
-    
-    $versionUrl = "$($AuthContext.ZvmUrl)/v1/serverinfo"
-    
     $params = @{
-        Uri         = $versionUrl
-        Method      = "GET"
-        Headers     = @{ Authorization = "Bearer $($AuthContext.Token)" }
-        TimeoutSec  = $AuthContext.TimeoutSeconds
-        ErrorAction = "SilentlyContinue"
+        Uri             = $uri
+        Method          = $Method
+        Headers         = $headers
+        TimeoutSec      = $AuthContext.TimeoutSeconds
+        UseBasicParsing = $true
     }
-    
+
+    if ($Body) {
+        if ($Body -is [string]) {
+            $params["Body"] = $Body
+        }
+        else {
+            $params["Body"] = ($Body | ConvertTo-Json -Depth 10)
+        }
+        $params["ContentType"] = "application/json"
+    }
+
+    # Handle TLS verification
     if (-not $AuthContext.VerifyTls) {
         if ($PSVersionTable.PSVersion.Major -ge 6) {
             $params["SkipCertificateCheck"] = $true
         }
+        else {
+            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+        }
     }
-    
+
     try {
-        $response = Invoke-WebRequest @params
-        $data = $response.Content | ConvertFrom-Json
-        return $data.version -or "Unknown"
+        Write-Verbose "$Method $uri"
+        $response = Invoke-RestMethod @params
+        return $response
     }
     catch {
-        return "Unknown"
+        Write-Error "API call failed: $Method $uri - $($_.Exception.Message)"
+        throw
+    }
+    finally {
+        if (-not $AuthContext.VerifyTls -and $PSVersionTable.PSVersion.Major -lt 6) {
+            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
+        }
     }
 }
 
-# Export functions
-Export-ModuleMember -Function Invoke-ZertoAuthentication, Invoke-KeycloakAuth, Invoke-LegacyAuth, Get-ZertoVersion, ConvertTo-ZertoSession
+<#
+.SYNOPSIS
+    Test connectivity to Zerto Virtual Manager
+
+.PARAMETER ZvmUrl
+    The base URL of the Zerto Virtual Manager
+
+.PARAMETER VerifyTls
+    Whether to verify TLS certificates (default: $true)
+
+.EXAMPLE
+    Test-ZertoConnectivity -ZvmUrl "https://192.168.111.20" -VerifyTls $false
+
+.OUTPUTS
+    Boolean indicating if ZVM is reachable
+#>
+function Test-ZertoConnectivity {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ZvmUrl,
+
+        [bool]$VerifyTls = $true
+    )
+
+    $ZvmUrl = $ZvmUrl.TrimEnd('/')
+    
+    try {
+        $testUrl = "$ZvmUrl/auth/realms/zerto/.well-known/openid-configuration"
+        
+        $params = @{
+            Uri             = $testUrl
+            Method          = "GET"
+            TimeoutSec      = 10
+            UseBasicParsing = $true
+            ErrorAction     = "Stop"
+        }
+
+        if (-not $VerifyTls) {
+            if ($PSVersionTable.PSVersion.Major -ge 6) {
+                $params["SkipCertificateCheck"] = $true
+            }
+            else {
+                [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+            }
+        }
+
+        $response = Invoke-RestMethod @params
+        
+        if ($response.issuer) {
+            Write-Verbose "Zerto 10.x detected (Keycloak available)"
+            return $true
+        }
+    }
+    catch {
+        Write-Verbose "Keycloak not detected, checking for legacy ZVM..."
+        
+        # Try legacy endpoint
+        try {
+            $testUrl = "$ZvmUrl/v1/serverDateTime"
+            $params["Uri"] = $testUrl
+            
+            Invoke-RestMethod @params | Out-Null
+            Write-Verbose "Zerto pre-10.x detected"
+            return $true
+        }
+        catch {
+            Write-Warning "Could not connect to ZVM at $ZvmUrl"
+            return $false
+        }
+    }
+    finally {
+        if (-not $VerifyTls -and $PSVersionTable.PSVersion.Major -lt 6) {
+            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Refresh an expired Keycloak token using the refresh token
+
+.PARAMETER AuthContext
+    Authentication context with RefreshToken
+
+.EXAMPLE
+    $auth = Update-ZertoAuthToken -AuthContext $auth
+
+.OUTPUTS
+    Updated authentication context
+#>
+function Update-ZertoAuthToken {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$AuthContext
+    )
+
+    if ($AuthContext.ZertoVersion -ne "10.x") {
+        Write-Warning "Token refresh is only supported for Zerto 10.x (Keycloak)"
+        return $AuthContext
+    }
+
+    if (-not $AuthContext.RefreshToken) {
+        throw "No refresh token available. Please reconnect using Connect-ZertoApi."
+    }
+
+    try {
+        $tokenUrl = "$($AuthContext.ZvmUrl)/auth/realms/zerto/protocol/openid-connect/token"
+        
+        $body = "grant_type=refresh_token&refresh_token=$($AuthContext.RefreshToken)&client_id=zerto-client"
+        
+        $params = @{
+            Uri             = $tokenUrl
+            Method          = "POST"
+            Body            = $body
+            ContentType     = "application/x-www-form-urlencoded"
+            TimeoutSec      = $AuthContext.TimeoutSeconds
+            UseBasicParsing = $true
+        }
+
+        if (-not $AuthContext.VerifyTls -and $PSVersionTable.PSVersion.Major -ge 6) {
+            $params["SkipCertificateCheck"] = $true
+        }
+
+        $response = Invoke-RestMethod @params
+
+        # Update the auth context with new tokens
+        $AuthContext.Token = $response.access_token
+        $AuthContext.RefreshToken = $response.refresh_token
+        $AuthContext.ExpiresAt = (Get-Date).AddSeconds($response.expires_in)
+        $AuthContext.ExpiresIn = $response.expires_in
+
+        Write-Verbose "Token refreshed successfully. New expiration: $($AuthContext.ExpiresAt)"
+        
+        return $AuthContext
+    }
+    catch {
+        throw "Failed to refresh token: $($_.Exception.Message)"
+    }
+}
+
+# Export module functions
+Export-ModuleMember -Function Connect-ZertoApi, Invoke-ZertoApi, Test-ZertoConnectivity, Update-ZertoAuthToken
