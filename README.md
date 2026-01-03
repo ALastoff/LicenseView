@@ -58,50 +58,34 @@ Query **Zerto REST APIs** to generate beautiful HTML dashboards showing license 
 
 ## Quick Start
 
-### Installation
+### 1. Download
 
-**Step 1: Download from GitHub**
-
-```bash
-# Option A: Clone with Git (if you have Git installed)
+```powershell
+# Option A: Clone with Git
 git clone https://github.com/ALastoff/LicenseView.git
 cd LicenseView
 
-# Option B: Download ZIP (no Git required)
-# Go to: https://github.com/ALastoff/LicenseView
-# Click "Code" → "Download ZIP"
-# Extract and navigate to folder
+# Option B: Download ZIP from GitHub
+# Extract to your preferred location and navigate to folder
 ```
 
-**Step 2: Copy config template**
-```bash
-cp config.example.yaml config.yaml
+**Windows PowerShell users:** Unblock downloaded files to prevent execution errors:
+```powershell
+Get-ChildItem -Recurse | Unblock-File
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 ```
 
-**⚠️ IMPORTANT:** Edit `config.yaml` before running! You MUST change these values:
+### 2. Configure
 
-1. **`zvm_url`** → Your ZVM hostname or IP address  
-   Example: `https://zvm.company.com` or `https://192.168.1.100`
+```powershell
+# Copy template
+Copy-Item config.example.yaml config.yaml
 
-2. **`username`** → Your Zerto administrator username  
-   Example: `admin` or `zerto-service-account`
-
-3. **`password`** → Your Zerto administrator password  
-   Example: Your secure password (use environment variables in production!)
-
-4. **`verify_tls`** → `true` for production, `false` for lab environments  
-   See [docs/TLS_SETUP_GUIDE.md](docs/TLS_SETUP_GUIDE.md) for certificate configuration
-
----
-
-## Configuration
-
-**Step 1: Copy the template**
-```bash
-cp config.example.yaml config.yaml
+# Edit with your ZVM details
+notepad config.yaml
 ```
 
-**Step 2: Open `config.yaml` and change these required values:**
+**Required changes in `config.yaml`:**
 
 ```yaml
 # ⚠️ REQUIRED: Change these before running!
@@ -143,11 +127,10 @@ For lab environments with self-signed certificates:
 - Set `verify_tls: false` (you'll see a warning)
 - OR follow [docs/TLS_SETUP_GUIDE.md](docs/TLS_SETUP_GUIDE.md) to trust your lab certificate
 
-### Run Reports
+### 3. Run
 
 **PowerShell:**
 ```powershell
-# First run will auto-create a sanitized auth.config.json from the template if missing
 ./zerto-licensing-report.ps1 -Config ./config.yaml -Verbose
 ```
 
@@ -156,34 +139,28 @@ For lab environments with self-signed certificates:
 python main.py --config ./config.yaml --verbose
 ```
 
-### Output
+### 4. View Reports
 
-Reports are generated in the configured `output_dir`:
+Reports are generated in `./reports/` (or your configured `output_dir`):
 
 - **report.html** — Interactive dashboard (open in browser)
 - **licensing_utilization.csv** — Tabular data for Excel/BI
 - **licensing_utilization.json** — Structured data for API integrations
 
-If you need `auth.config.json` (for external auth modules), place your real file next to the script/exe; the repo ships a sanitized template at `assets/templates/auth.config.example.json`.
-
 ## Authentication
-
-### Built-in Authentication
 
 **Zerto 10.x (Keycloak OIDC):**
 
-Password grant flow with `openid` scope:
+Password grant flow with `openid` scope. The tool automatically tries Keycloak first, then falls back to legacy session auth.
 
 ```yaml
 auth:
   version: "10.x"
-  username: "${ZVM_USERNAME}"
-  password: "${ZVM_PASSWORD}"
-  client_id: "zerto-client"  # default Keycloak client
+  username: "admin"
+  password: "your-password"
+  client_id: "zerto-client"  # default
   client_secret: ""  # optional, if your realm requires it
 ```
-
-The tool automatically tries Keycloak token acquisition first, then falls back to legacy session auth if that fails.
 
 **Pre-10.x (Legacy Session):**
 
@@ -192,37 +169,32 @@ Basic auth session token:
 ```yaml
 auth:
   version: "pre-10"
-  username: "${ZVM_USERNAME}"
-  password: "${ZVM_PASSWORD}"
+  username: "admin"
+  password: "your-password"
 ```
 
-### Custom Authentication Module (Advanced)
-
-For enterprise environments with custom auth workflows, you can provide your own `ZertoAuth.psm1` module:
+**Security Tip:** Use environment variables instead of hardcoding passwords:
 
 ```yaml
-auth_module_path: "C:\\Path\\To\\ZertoAuth.psm1"
 auth:
-  version: "10.x"
   username: "${ZVM_USERNAME}"
   password: "${ZVM_PASSWORD}"
 ```
 
-Your module must export `Connect-ZertoApi` and `Invoke-ZertoApi` functions. See `docs/AUTH_CONFIG.md` for details.
-
-**Optional `auth.config.json`:**
-
-If your custom module requires a JSON config for multi-site/credential-manager integration, place `auth.config.json` next to the script. On first run, a sanitized template is auto-created from `assets/templates/auth.config.example.json`—edit it with your real hosts and credential targets.
-
-📖 **See [docs/AUTH_CONFIG.md](docs/AUTH_CONFIG.md)** for auth.config.json schema and packaging instructions.
+Then set them before running:
+```powershell
+$env:ZVM_USERNAME = "admin"
+$env:ZVM_PASSWORD = "your-password"
+```
 
 ## Configuration Reference
 
 | Field | Description | Default |
-|-------|-------------|---------||
+|-------|---------|---------|
 | `zvm_url` | ZVM base URL | Required |
 | `auth.version` | `10.x` or `pre-10` | Required |
-| `auth_module_path` | Path to custom auth module (optional) | `null` |
+| `auth.username` | ZVM administrator username | Required |
+| `auth.password` | ZVM administrator password | Required |
 | `verify_tls` | Enable/disable TLS validation | `true` |
 | `certificate_thumbprint` | Windows certificate pinning | `null` |
 | `trusted_ca_path` | CA bundle path (cross-platform) | `null` |
@@ -491,28 +463,17 @@ Invoke-ScriptAnalyzer -Path src/ps/ -Recurse
 
 ## Contributing
 
+We welcome contributions!
+
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Write/update tests
+3. Make your changes and write/update tests
+4. Follow code style: PSScriptAnalyzer for PowerShell, PEP 8 for Python
 5. Commit with clear messages (`git commit -m 'Add amazing feature'`)
-6. Push to branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+6. Push and open a Pull Request
 
-## Contributing
-
-We welcome contributions! To contribute:
-- **Report bugs**: Open an issue on [GitHub Issues](https://github.com/ALastoff/LicenseView/issues)
-- **Request features**: Start a discussion on [GitHub Discussions](https://github.com/ALastoff/LicenseView/discussions)
-- **Submit code**: Fork the repo, make changes, and submit a pull request
-- **Code style**: Follow PSScriptAnalyzer rules for PowerShell, PEP 8 for Python
-
-### Code Style
-
-- **Python**: Follow [PEP 8](https://www.python.org/dev/peps/pep-0008/) - Format with `black`
-- **PowerShell**: Follow [PSScriptAnalyzer](https://github.com/PowerShell/PSScriptAnalyzer) rules
-- Meaningful commit messages and PR descriptions
-- Update tests for new features
+**Report bugs**: [GitHub Issues](https://github.com/ALastoff/LicenseView/issues)  
+**Request features**: [GitHub Discussions](https://github.com/ALastoff/LicenseView/discussions)
 
 ## Documentation
 
