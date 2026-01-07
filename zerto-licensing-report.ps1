@@ -266,6 +266,13 @@ function Send-UsageReport {
         
         if ($isLocalSite) {
             # Local site - use localsite data
+            # Determine role: check if protecting VMs (source) and/or receiving VMs (target)
+            $isSource = $siteUsage.ProtectedVmsCount -gt 0
+            $incomingVPGs = $vpgData | Where-Object { $_.RecoverySiteName -eq $localSiteData.SiteName }
+            $isTarget = $incomingVPGs.Count -gt 0
+            
+            $role = if ($isSource -and $isTarget) { "Source/Target" } elseif ($isSource) { "Source" } elseif ($isTarget) { "Target" } else { "Unknown" }
+            
             $sitesArray += @{
                 name = $localSiteData.SiteName
                 protected_vms = $siteUsage.ProtectedVmsCount
@@ -273,7 +280,7 @@ function Send-UsageReport {
                 location = $localSiteData.Location
                 hostname = $localSiteData.IpAddress
                 version = $localSiteData.DisplayVersion
-                siteRole = if ($siteUsage.ProtectedVmsCount -gt 0) { "Source" } else { "Target" }
+                siteRole = $role
                 storage_used_gb = 0
                 storage_total_gb = 0
             }
@@ -283,6 +290,13 @@ function Send-UsageReport {
             $peerSite = $siteData | Where-Object { $_.SiteIdentifier -eq $siteUsage.SiteIdentifier } | Select-Object -First 1
             
             if ($peerSite) {
+                # Determine role: check if protecting VMs (source) and/or receiving VMs (target)
+                $isSource = $siteUsage.ProtectedVmsCount -gt 0
+                $incomingVPGs = $vpgData | Where-Object { $_.RecoverySiteName -eq $peerSite.PeerSiteName }
+                $isTarget = $incomingVPGs.Count -gt 0
+                
+                $role = if ($isSource -and $isTarget) { "Source/Target" } elseif ($isSource) { "Source" } elseif ($isTarget) { "Target" } else { "Unknown" }
+                
                 $sitesArray += @{
                     name = $peerSite.PeerSiteName
                     protected_vms = $siteUsage.ProtectedVmsCount
@@ -290,13 +304,19 @@ function Send-UsageReport {
                     location = $peerSite.Location
                     hostname = $peerSite.HostName
                     version = $peerSite.Version
-                    siteRole = if ($siteUsage.ProtectedVmsCount -gt 0) { "Source" } else { "Target" }
+                    siteRole = $role
                     storage_used_gb = [Math]::Round($peerSite.UsedStorage / 1024, 2)
                     storage_total_gb = [Math]::Round($peerSite.ProvisionedStorage / 1024, 2)
                 }
             }
             else {
                 # Fallback if peer site not found
+                $isSource = $siteUsage.ProtectedVmsCount -gt 0
+                $incomingVPGs = $vpgData | Where-Object { $_.RecoverySiteName -eq $siteUsage.SiteName }
+                $isTarget = $incomingVPGs.Count -gt 0
+                
+                $role = if ($isSource -and $isTarget) { "Source/Target" } elseif ($isSource) { "Source" } elseif ($isTarget) { "Target" } else { "Unknown" }
+                
                 $sitesArray += @{
                     name = $siteUsage.SiteName
                     protected_vms = $siteUsage.ProtectedVmsCount
@@ -304,7 +324,7 @@ function Send-UsageReport {
                     location = "Unknown"
                     hostname = "Unknown"
                     version = $auth.ZertoVersion
-                    siteRole = if ($siteUsage.ProtectedVmsCount -gt 0) { "Source" } else { "Target" }
+                    siteRole = $role
                     storage_used_gb = 0
                     storage_total_gb = 0
                 }
